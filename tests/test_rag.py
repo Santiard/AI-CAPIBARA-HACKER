@@ -100,5 +100,49 @@ class TestSecurityRetriever(unittest.TestCase):
         self.assertIn("internal_policies", all_ctx)
 
 
+from src.rag.ingest import TextSplitter, KnowledgeIngestionPipeline
+
+
+class TestIngestionPipeline(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = BASE_DIR / "chroma_test_data"
+        self.vsm = VectorStoreManager(
+            persist_directory=self.test_dir,
+            embedding_type="sentence-transformers"
+        )
+        self.pipeline = KnowledgeIngestionPipeline(vectorstore_manager=self.vsm)
+
+    def tearDown(self):
+        import shutil
+        if self.test_dir.exists():
+            shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def test_text_splitter(self):
+        splitter = TextSplitter(chunk_size=100, chunk_overlap=20)
+        sample = "Paragraph one with some text content.\n\nParagraph two with another set of words for testing."
+        chunks = splitter.split_text(sample)
+        self.assertGreaterEqual(len(chunks), 1)
+
+    def test_cve_json_file_exists_and_valid(self):
+        cve_json = BASE_DIR / "data" / "cves" / "cves_database.json"
+        self.assertTrue(cve_json.exists())
+        import json
+        with open(cve_json, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertGreaterEqual(len(data), 15)
+        # Check first item schema
+        first = data[0]
+        self.assertIn("cve_id", first)
+        self.assertIn("service", first)
+        self.assertIn("cvss_score", first)
+        self.assertIn("severity", first)
+
+    def test_benchmark_and_policy_files_exist(self):
+        cis_files = list((BASE_DIR / "data" / "cis_benchmarks").glob("*.md"))
+        self.assertGreaterEqual(len(cis_files), 4)
+        policy_files = list((BASE_DIR / "data" / "policies").glob("*.md"))
+        self.assertGreaterEqual(len(policy_files), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
