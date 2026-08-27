@@ -1,0 +1,28 @@
+﻿# --- LLM & Framework Multi-Agente ---
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
+pydantic>=2.7.0
+
+# --- RAG & Base Vectorial Local ---
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+
+# --- Parser & Utilidades de Auditoría ---
+xmltodict>=0.13.0
+python-nmap>=0.7.1
+
+# --- Interfaz de Usuario & Dashboard ---
+streamlit>=1.38.0
+pandas>=2.2.0
+plotly>=5.22.0
+
+# --- Reportes & Exportación ---
+markdown>=3.6
+reportlab>=4.2.0
+
+# --- Configuración & Consola ---
+python-dotenv>=1.0.0
+rich>=13.7.0
