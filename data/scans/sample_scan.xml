@@ -1,0 +1,64 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sV -sC -O -oX sample_scan.xml 192.168.1.50" start="1708900000" startstr="Mon Feb 26 10:00:00 2026" version="7.94" xmloutputversion="1.05">
+  <scaninfo type="syn" protocol="tcp" numservices="1000" services="1-65535"/>
+  <verbose level="0"/>
+  <debugging level="0"/>
+  <host starttime="1708900001" endtime="1708900030">
+    <status state="up" reason="arp-response" reason_ttl="0"/>
+    <address addr="192.168.1.50" addrtype="ipv4"/>
+    <hostnames>
+      <hostname name="srv-corp-production.local" type="user"/>
+      <hostname name="srv-corp-production.local" type="PTR"/>
+    </hostnames>
+    <ports>
+      <extraports state="closed" count="994">
+        <extrareasons reason="resets" count="994"/>
+      </extraports>
+      <port protocol="tcp" portid="21">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="ftp" product="vsftpd" version="2.3.4" method="probed" conf="10">
+          <cpe>cpe:/a:vsftpd:vsftpd:2.3.4</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="ssh" product="OpenSSH" version="7.4p1" extrainfo="Debian 10+deb9u7" ostype="Linux" method="probed" conf="10">
+          <cpe>cpe:/a:openbsd:openssh:7.4p1</cpe>
+          <cpe>cpe:/o:linux:linux_kernel</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="http" product="Apache httpd" version="2.4.29" extrainfo="(Ubuntu)" method="probed" conf="10">
+          <cpe>cpe:/a:apache:http_server:2.4.29</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="ssl/http" product="Apache httpd" version="2.4.29" extrainfo="(Ubuntu)" tunnel="ssl" method="probed" conf="10">
+          <cpe>cpe:/a:apache:http_server:2.4.29</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="3306">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="mysql" product="MySQL" version="5.7.33" method="probed" conf="10">
+          <cpe>cpe:/a:mysql:mysql:5.7.33</cpe>
+        </service>
+      </port>
+      <port protocol="tcp" portid="8080">
+        <state state="open" reason="syn-ack" reason_ttl="64"/>
+        <service name="http" product="Apache Tomcat" version="9.0.30" method="probed" conf="10">
+          <cpe>cpe:/a:apache:tomcat:9.0.30</cpe>
+        </service>
+      </port>
+    </ports>
+    <os>
+      <osmatch name="Linux 5.4 - 5.15" accuracy="96" line="64321"/>
+    </os>
+  </host>
+  <runstats>
+    <finished time="1708900030" timestr="Mon Feb 26 10:00:30 2026" summary="Nmap done at Mon Feb 26 10:00:30 2026; 1 IP address (1 host up) scanned in 30.00 seconds" elapsed="30.00" exit="success"/>
+    <hosts up="1" down="0" total="1"/>
+  </runstats>
+</nmaprun>
