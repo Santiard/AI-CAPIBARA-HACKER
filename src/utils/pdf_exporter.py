@@ -1,4 +1,4 @@
-﻿"""
+"""
 Generador de reportes de auditoría en formato PDF descargable.
 Utiliza ReportLab para compilar un documento ejecutivo y técnico con tablas,
 paletas de colores de severidad y bloques de código de mitigación.
@@ -7,18 +7,22 @@ Incluye sanitización para compatibilidad con fuentes estándar.
 import os
 import re
 from typing import Dict, Any, Union
-from reportlab.lib.pagesizes import letter
-from reportlab.lib import colors
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Table,
-    TableStyle,
-    KeepTogether,
-    HRFlowable
-)
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+        KeepTogether,
+        HRFlowable
+    )
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
 from src.utils.report_formatter import AuditReportData
 
 
@@ -49,6 +53,13 @@ def export_report_to_pdf(data: Union[AuditReportData, Dict[str, Any]], output_pa
 
     # Crear directorio si no existe
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+    if not HAS_REPORTLAB:
+        from src.utils.report_formatter import format_markdown_report
+        content = format_markdown_report(report)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return os.path.abspath(output_path)
 
     doc = SimpleDocTemplate(
         output_path,
