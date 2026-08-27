@@ -1,13 +1,22 @@
-﻿"""
+"""
 Configuración centralizada del sistema AI-CAPIBARA-HACKER.
 Carga variables de entorno desde .env con valores por defecto seguros.
 """
 import os
 from pathlib import Path
-from dotenv import load_dotenv
-
-# Cargar .env si existe
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Minimal fallback parser if dotenv is not yet installed
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
 
 # Rutas base del proyecto
 BASE_DIR = Path(__file__).resolve().parent.parent
