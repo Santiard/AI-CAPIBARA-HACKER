@@ -1,7 +1,7 @@
 ﻿# 🦫 AI-CAPIBARA-HACKER
 ### Sistema Multi-Agente de Auditoría de Seguridad, Análisis de Vulnerabilidades y Remediación
 
-Proyecto desarrollado para la materia **Intelligent Engineering**. Este sistema implementa un ecosistema multiagente local para automatizar el análisis técnico de escaneos de red (ej. Nmap), correlacionar vulnerabilidades conocidas (CVEs), contrastar configuraciones con guías de *hardening* (CIS Benchmarks) y generar recomendaciones de mitigación accionables.
+Proyecto desarrollado para la materia **AI AGENTIC ENGINEERING**. Este sistema implementa un ecosistema multiagente local para automatizar el análisis técnico de escaneos de red (ej. Nmap), correlacionar vulnerabilidades conocidas (CVEs), contrastar configuraciones con guías de *hardening* (CIS Benchmarks) y generar recomendaciones de mitigación accionables.
 
 ---
 
