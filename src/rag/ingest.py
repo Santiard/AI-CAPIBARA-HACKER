@@ -1,10 +1,10 @@
 """
-Automated Ingestion Pipeline for AI-CAPIBARA-HACKER Knowledge Bases.
-Parses CVE databases, CIS hardening benchmarks, and corporate policies from data/,
-applies strategic recursive chunking with structured metadata extraction,
-and stores embeddings persistently in ChromaDB.
+Pipeline de Ingestión Automatizada para las Bases de Conocimiento de AI-CAPIBARA-HACKER.
+Parsea bases de datos de CVEs, benchmarks de hardening CIS y políticas corporativas desde data/,
+aplica chunking estratégico recursivo con extracción de metadatos estructurados,
+y almacena los embeddings de manera persistente en ChromaDB.
 
-Usage:
+Uso:
     python src/rag/ingest.py
     python src/rag/ingest.py --reset
     python src/rag/ingest.py --collection cves
@@ -18,7 +18,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
-# Ensure project root is in sys.path
+# Asegurar que el directorio raíz esté en sys.path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
@@ -40,8 +40,8 @@ if not logger.handlers:
 
 class TextSplitter:
     """
-    Strategic Recursive Character Text Splitter with LangChain compatibility
-    and zero-dependency fallback.
+    Divisor de texto recursivo y estratégico compatible con LangChain
+    y con mecanismo de respaldo (fallback) sin dependencias externas.
     """
     def __init__(self, chunk_size: int = 700, chunk_overlap: int = 120, separators: List[str] = None):
         self.chunk_size = chunk_size
@@ -49,7 +49,7 @@ class TextSplitter:
         self.separators = separators or ["\n\n---\n\n", "\n\n## ", "\n\n### ", "\n\n", "\n", " ", ""]
 
     def split_text(self, text: str) -> List[str]:
-        # Try LangChain splitter first if available
+        # Intentar usar el splitter de LangChain si está disponible
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
             splitter = RecursiveCharacterTextSplitter(
@@ -70,7 +70,7 @@ class TextSplitter:
             except ImportError:
                 pass
 
-        # Robust built-in recursive splitting fallback
+        # Fallback de división recursiva nativa
         return self._recursive_split(text, self.separators)
 
     def _recursive_split(self, text: str, separators: List[str]) -> List[str]:
@@ -112,7 +112,7 @@ class TextSplitter:
 
 class KnowledgeIngestionPipeline:
     """
-    Orchestrates loading, parsing, chunking, and indexing of knowledge bases.
+    Orquesta la carga, parsing, chunking e indexación de las bases de conocimiento.
     """
 
     def __init__(self, vectorstore_manager: VectorStoreManager = None, chunk_size: int = 700, chunk_overlap: int = 120):
@@ -121,18 +121,18 @@ class KnowledgeIngestionPipeline:
 
     def ingest_cves(self, cves_dir: Path = CVES_DIR) -> Tuple[int, int]:
         """
-        Ingests structured JSON CVE records and Markdown technical advisories into COLLECTION_CVES.
+        Ingesta registros estructurados de CVEs en JSON y reportes en Markdown en COLLECTION_CVES.
         """
-        logger.info("--> Ingesting CVE Knowledge Base from: %s", cves_dir)
+        logger.info("--> Ingestando base de conocimiento CVE desde: %s", cves_dir)
         documents = []
         metadatas = []
         ids = []
 
         if not cves_dir.exists():
-            logger.warning("CVEs directory not found: %s", cves_dir)
+            logger.warning("Directorio de CVEs no encontrado: %s", cves_dir)
             return (0, 0)
 
-        # 1. Process JSON files
+        # 1. Procesar archivos JSON
         json_files = list(cves_dir.glob("*.json"))
         for jfile in json_files:
             try:
@@ -180,9 +180,9 @@ class KnowledgeIngestionPipeline:
                     })
                     ids.append(f"cve_{cve_id.lower().replace('-', '_')}")
             except Exception as e:
-                logger.error("Error reading CVE JSON file %s: %s", jfile.name, e)
+                logger.error("Error al leer archivo JSON de CVEs %s: %s", jfile.name, e)
 
-        # 2. Process Markdown files
+        # 2. Procesar archivos Markdown
         md_files = list(cves_dir.glob("*.md"))
         for md_file in md_files:
             try:
@@ -192,12 +192,10 @@ class KnowledgeIngestionPipeline:
                 service_guess = md_file.stem.split("_")[0].lower()
                 chunks = self.splitter.split_text(text)
                 for idx, chunk in enumerate(chunks):
-                    # Extract CVE pattern if present
                     import re
                     cve_match = re.search(r"CVE-\d{4}-\d{4,7}", chunk, re.IGNORECASE)
                     cve_found = cve_match.group(0).upper() if cve_match else f"MD-{md_file.stem.upper()}-{idx+1}"
                     
-                    # Severity extraction
                     sev = "HIGH"
                     if "CRITICAL" in chunk:
                         sev = "CRITICAL"
@@ -217,25 +215,25 @@ class KnowledgeIngestionPipeline:
                     })
                     ids.append(f"cve_md_{md_file.stem}_{idx}_{cve_found.lower().replace('-', '_')}")
             except Exception as e:
-                logger.error("Error reading CVE Markdown file %s: %s", md_file.name, e)
+                logger.error("Error al leer archivo Markdown de CVEs %s: %s", md_file.name, e)
 
         if documents:
             self.vsm.add_documents(COLLECTION_CVES, documents, metadatas, ids)
-            logger.info("Successfully ingested %d records into '%s'.", len(documents), COLLECTION_CVES)
+            logger.info("Ingesta completada: %d registros en '%s'.", len(documents), COLLECTION_CVES)
 
         return (len(json_files) + len(md_files), len(documents))
 
     def ingest_cis_benchmarks(self, cis_dir: Path = CIS_DIR) -> Tuple[int, int]:
         """
-        Ingests CIS Benchmark hardening guides into COLLECTION_CIS.
+        Ingesta guías de hardening CIS Benchmarks en COLLECTION_CIS.
         """
-        logger.info("--> Ingesting CIS Benchmarks from: %s", cis_dir)
+        logger.info("--> Ingestando guías CIS Benchmarks desde: %s", cis_dir)
         documents = []
         metadatas = []
         ids = []
 
         if not cis_dir.exists():
-            logger.warning("CIS directory not found: %s", cis_dir)
+            logger.warning("Directorio de CIS Benchmarks no encontrado: %s", cis_dir)
             return (0, 0)
 
         md_files = list(cis_dir.glob("*.md"))
@@ -244,7 +242,7 @@ class KnowledgeIngestionPipeline:
                 with open(md_file, "r", encoding="utf-8") as f:
                     text = f.read()
 
-                # Infer service from filename: cis_apache_http_server.md -> apache
+                # Inferir servicio a partir del nombre del archivo: cis_apache_http_server.md -> apache
                 parts = md_file.stem.replace("cis_", "").split("_")
                 service_inferred = parts[0].lower() if parts else "system"
                 os_type = "linux" if "linux" in md_file.stem else ""
@@ -266,25 +264,25 @@ class KnowledgeIngestionPipeline:
                     })
                     ids.append(f"cis_{md_file.stem}_{idx}_{rule_id.lower().replace('-', '_')}")
             except Exception as e:
-                logger.error("Error reading CIS Markdown file %s: %s", md_file.name, e)
+                logger.error("Error al leer archivo CIS %s: %s", md_file.name, e)
 
         if documents:
             self.vsm.add_documents(COLLECTION_CIS, documents, metadatas, ids)
-            logger.info("Successfully ingested %d records into '%s'.", len(documents), COLLECTION_CIS)
+            logger.info("Ingesta completada: %d registros en '%s'.", len(documents), COLLECTION_CIS)
 
         return (len(md_files), len(documents))
 
     def ingest_policies(self, policies_dir: Path = POLICIES_DIR) -> Tuple[int, int]:
         """
-        Ingests corporate cybersecurity policies into COLLECTION_POLICIES.
+        Ingesta políticas corporativas de seguridad en COLLECTION_POLICIES.
         """
-        logger.info("--> Ingesting Corporate Policies from: %s", policies_dir)
+        logger.info("--> Ingestando Políticas Corporativas desde: %s", policies_dir)
         documents = []
         metadatas = []
         ids = []
 
         if not policies_dir.exists():
-            logger.warning("Policies directory not found: %s", policies_dir)
+            logger.warning("Directorio de Políticas no encontrado: %s", policies_dir)
             return (0, 0)
 
         md_files = list(policies_dir.glob("*.md"))
@@ -304,26 +302,26 @@ class KnowledgeIngestionPipeline:
                     })
                     ids.append(f"policy_{md_file.stem}_{idx}")
             except Exception as e:
-                logger.error("Error reading Policy file %s: %s", md_file.name, e)
+                logger.error("Error al leer archivo de política %s: %s", md_file.name, e)
 
         if documents:
             self.vsm.add_documents(COLLECTION_POLICIES, documents, metadatas, ids)
-            logger.info("Successfully ingested %d records into '%s'.", len(documents), COLLECTION_POLICIES)
+            logger.info("Ingesta completada: %d registros en '%s'.", len(documents), COLLECTION_POLICIES)
 
         return (len(md_files), len(documents))
 
     def run_all(self, reset: bool = False, collections_filter: str = "all") -> Dict[str, Any]:
         """
-        Executes full ingestion pipeline for selected collections.
+        Ejecuta el pipeline completo de ingestión para las colecciones seleccionadas.
         """
         logger.info("=" * 60)
-        logger.info(" 🦫 AI-CAPIBARA-HACKER: Starting Knowledge Base Ingestion")
+        logger.info(" 🦫 AI-CAPIBARA-HACKER: Iniciando Ingestión en Base Vectorial")
         logger.info("=" * 60)
 
         summary = {}
 
         if reset:
-            logger.info("[*] Reset flag enabled: Clearing existing ChromaDB collections...")
+            logger.info("[*] Flag --reset activada: Vaciando colecciones existentes en ChromaDB...")
             if collections_filter in ["all", "cves"]:
                 self.vsm.reset_collection(COLLECTION_CVES)
             if collections_filter in ["all", "cis"]:
@@ -347,9 +345,9 @@ class KnowledgeIngestionPipeline:
         summary["collection_stats"] = stats
 
         logger.info("=" * 60)
-        logger.info(" Ingestion Complete Summary:")
+        logger.info(" Resumen de Ingestión Completada:")
         for col, data in stats.get("collections", {}).items():
-            logger.info(f"   * Collection: {col} -> Total vectors: {data.get('count', 0)} ({data.get('status')})")
+            logger.info(f"   * Colección: {col} -> Total vectores: {data.get('count', 0)} ({data.get('status')})")
         logger.info("=" * 60)
 
         return summary
@@ -357,28 +355,28 @@ class KnowledgeIngestionPipeline:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Ingest CVEs, CIS Benchmarks, and Policies into AI-CAPIBARA-HACKER ChromaDB."
+        description="Ingesta CVEs, guías CIS Benchmarks y Políticas en ChromaDB para AI-CAPIBARA-HACKER."
     )
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="Clear existing ChromaDB collections before ingesting."
+        help="Vaciar las colecciones existentes antes de la nueva ingestión."
     )
     parser.add_argument(
         "--collection",
         choices=["all", "cves", "cis", "policies"],
         default="all",
-        help="Specify which knowledge base collection to ingest (default: all)."
+        help="Especificar qué colección ingestar (por defecto: all)."
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Simulate ingestion without writing to ChromaDB."
+        help="Simular el proceso de chunking y lectura sin escribir en ChromaDB."
     )
     parser.add_argument(
         "--stats",
         action="store_true",
-        help="Display current collection stats and exit."
+        help="Mostrar las estadísticas de las colecciones y salir."
     )
 
     args = parser.parse_args()
@@ -392,16 +390,15 @@ def main():
     pipeline = KnowledgeIngestionPipeline(vectorstore_manager=vsm)
 
     if args.dry_run:
-        print("[*] Dry run mode enabled. Testing file parsing & chunking...")
-        # Inspect files without database insertion
+        print("[*] Modo Dry-Run activado. Probando lectura y división de archivos...")
         cve_json = list(CVES_DIR.glob("*.json"))
         cve_md = list(CVES_DIR.glob("*.md"))
         cis_md = list(CIS_DIR.glob("*.md"))
         pol_md = list(POLICIES_DIR.glob("*.md"))
-        print(f"[*] Found {len(cve_json)} CVE JSON files and {len(cve_md)} CVE Markdown files.")
-        print(f"[*] Found {len(cis_md)} CIS Benchmark Markdown files.")
-        print(f"[*] Found {len(pol_md)} Corporate Policy Markdown files.")
-        print("[*] Dry run completed successfully.")
+        print(f"[*] Encontrados {len(cve_json)} archivos JSON y {len(cve_md)} Markdown de CVEs.")
+        print(f"[*] Encontrados {len(cis_md)} archivos Markdown de CIS Benchmarks.")
+        print(f"[*] Encontrados {len(pol_md)} archivos Markdown de Políticas Corporativas.")
+        print("[*] Simulación (Dry-Run) completada exitosamente.")
         return
 
     pipeline.run_all(reset=args.reset, collections_filter=args.collection)

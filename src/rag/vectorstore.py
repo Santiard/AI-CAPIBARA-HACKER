@@ -1,9 +1,9 @@
 """
-VectorStore Manager for AI-CAPIBARA-HACKER.
-Handles local embedding model initialization and persistent ChromaDB collections for:
-1. cve_knowledge_base (CVEs, CVSS scores, technical vulnerability details)
-2. hardening_cis_benchmarks (CIS security hardening guides: Apache, SSH, Nginx, Linux)
-3. internal_policies (Corporate security and compliance policies)
+Gestor de VectorStore para AI-CAPIBARA-HACKER.
+Maneja la inicialización de modelos de embeddings locales y colecciones persistentes de ChromaDB:
+1. cve_knowledge_base (Vulnerabilidades técnicas, CVSS, descripciones)
+2. hardening_cis_benchmarks (Guías oficiales de configuración segura: Apache, SSH, Nginx, Linux)
+3. internal_policies (Políticas corporativas de la empresa auditada)
 """
 import os
 import logging
@@ -35,8 +35,8 @@ if not logger.handlers:
 
 class LocalOllamaEmbeddingFunction(EmbeddingFunction):
     """
-    ChromaDB compatible Embedding Function for local Ollama instances.
-    Uses nomic-embed-text (or configured model) without internet connection.
+    Función de embeddings compatible con ChromaDB para instancias locales de Ollama.
+    Utiliza nomic-embed-text (o el modelo configurado) sin requerir conexión a internet.
     """
     def __init__(self, base_url: str = OLLAMA_BASE_URL, model_name: str = OLLAMA_EMBED_MODEL):
         self.base_url = base_url.rstrip("/")
@@ -51,7 +51,7 @@ class LocalOllamaEmbeddingFunction(EmbeddingFunction):
                 base_url=self.base_url,
                 model=self.model_name
             )
-            logger.info("Initialized LangChain OllamaEmbeddings with model: %s", self.model_name)
+            logger.info("LangChain OllamaEmbeddings inicializado con modelo: %s", self.model_name)
         except ImportError:
             try:
                 from langchain_community.embeddings import OllamaEmbeddings
@@ -59,23 +59,23 @@ class LocalOllamaEmbeddingFunction(EmbeddingFunction):
                     base_url=self.base_url,
                     model=self.model_name
                 )
-                logger.info("Initialized LangChain Community OllamaEmbeddings with model: %s", self.model_name)
+                logger.info("LangChain Community OllamaEmbeddings inicializado con modelo: %s", self.model_name)
             except ImportError:
                 self._langchain_embeddings = None
-                logger.warning("langchain-ollama/community not installed. Direct HTTP requests will be used.")
+                logger.warning("langchain-ollama/community no disponible. Se usarán peticiones HTTP directas.")
 
     def __call__(self, input: Union[str, List[str]]) -> List[List[float]]:
         if isinstance(input, str):
             input = [input]
 
-        # Use LangChain client if available
+        # Usar cliente de LangChain si está disponible
         if self._langchain_embeddings is not None:
             try:
                 return self._langchain_embeddings.embed_documents(input)
             except Exception as e:
-                logger.warning("LangChain OllamaEmbeddings call failed (%s). Attempting direct HTTP request.", e)
+                logger.warning("Fallo al conectar con LangChain OllamaEmbeddings (%s). Intentando HTTP directo.", e)
 
-        # Fallback to direct HTTP request using urllib (no extra dependency)
+        # Fallback a petición HTTP directa usando urllib (sin dependencias externas)
         import json
         import urllib.request
         embeddings = []
@@ -91,16 +91,16 @@ class LocalOllamaEmbeddingFunction(EmbeddingFunction):
                     res_json = json.loads(response.read().decode("utf-8"))
                     embeddings.append(res_json.get("embedding", []))
             except Exception as err:
-                logger.error("Failed to generate embedding via Ollama HTTP API: %s", err)
-                # Fallback to zero vector or fallback representation if Ollama daemon is offline
+                logger.error("Error al generar embedding mediante API HTTP de Ollama: %s", err)
+                # Vector de respaldo si el servicio de Ollama no está en ejecución
                 embeddings.append([0.0] * 768)
         return embeddings
 
 
 class SentenceTransformerEmbeddingFunction(EmbeddingFunction):
     """
-    ChromaDB compatible Embedding Function using local Sentence-Transformers / HuggingFace.
-    Operates 100% offline without requiring Ollama daemon.
+    Función de embeddings compatible con ChromaDB usando Sentence-Transformers / HuggingFace local.
+    Opera 100% offline sin requerir el daemon de Ollama.
     """
     def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.model_name = model_name
@@ -111,9 +111,9 @@ class SentenceTransformerEmbeddingFunction(EmbeddingFunction):
         try:
             from sentence_transformers import SentenceTransformer
             self.model = SentenceTransformer(self.model_name)
-            logger.info("Initialized SentenceTransformer model: %s", self.model_name)
+            logger.info("Modelo SentenceTransformer inicializado: %s", self.model_name)
         except ImportError:
-            logger.warning("sentence-transformers is not installed. SentenceTransformerEmbeddingFunction will use fallback.")
+            logger.warning("sentence-transformers no está instalado. Se utilizará el fallback determinista.")
             self.model = None
 
     def __call__(self, input: Union[str, List[str]]) -> List[List[float]]:
@@ -123,15 +123,15 @@ class SentenceTransformerEmbeddingFunction(EmbeddingFunction):
             embeddings = self.model.encode(input, convert_to_numpy=True)
             return embeddings.tolist()
         
-        # Fallback deterministic pseudo-embeddings for testing offline without weights
-        logger.warning("SentenceTransformer model unavailable. Generating deterministic fallback embeddings.")
+        # Fallback determinista para pruebas locales sin librerías de modelos pesados
+        logger.warning("Modelo SentenceTransformer no disponible. Generando embeddings deterministas de respaldo.")
         dim = 384
         result = []
         for text in input:
             vec = [0.0] * dim
             for i, char in enumerate(text[:dim]):
                 vec[i % dim] += (ord(char) % 100) / 100.0
-            # Normalize length
+            # Normalización de norma Euclidiana
             norm = sum(v * v for v in vec) ** 0.5 or 1.0
             result.append([v / norm for v in vec])
         return result
@@ -139,12 +139,12 @@ class SentenceTransformerEmbeddingFunction(EmbeddingFunction):
 
 class VectorStoreManager:
     """
-    Central Manager for persistent ChromaDB storage and collections in AI-CAPIBARA-HACKER.
+    Gestor centralizado de base vectorial persistente con ChromaDB para AI-CAPIBARA-HACKER.
     
-    Manages three dedicated collections:
-    - cve_knowledge_base: Known CVEs, CVSS v3 vectors, CWE, affected products/versions.
-    - hardening_cis_benchmarks: Hardening recommendations, rules, commands and configurations.
-    - internal_policies: Organizational compliance rules, authorization scopes, and SLA guidelines.
+    Administra tres colecciones dedicadas:
+    - cve_knowledge_base: CVEs conocidos, vectores CVSS v3, CWEs, versiones afectadas.
+    - hardening_cis_benchmarks: Recomendaciones de hardening CIS, reglas y configuraciones seguras.
+    - internal_policies: Políticas internas corporativas, alcances de auditoría y SLAs de remediación.
     """
 
     KNOWN_COLLECTIONS = {
@@ -160,12 +160,12 @@ class VectorStoreManager:
         embedding_model: Optional[str] = None
     ):
         """
-        Initialize the VectorStoreManager.
+        Inicializa el VectorStoreManager.
 
         Args:
-            persist_directory: Path to store ChromaDB data on disk. Defaults to config.CHROMA_DIR.
-            embedding_type: 'ollama' or 'sentence-transformers'.
-            embedding_model: Optional specific embedding model name override.
+            persist_directory: Ruta en disco para persistencia de ChromaDB.
+            embedding_type: 'ollama' o 'sentence-transformers'.
+            embedding_model: Nombre del modelo de embeddings opcional.
         """
         self.persist_directory = Path(persist_directory) if persist_directory else CHROMA_DIR
         self.persist_directory.mkdir(parents=True, exist_ok=True)
@@ -180,7 +180,7 @@ class VectorStoreManager:
         self._initialize_default_collections()
 
     def _setup_embedding_function(self) -> Any:
-        """Configures the local embedding function according to settings."""
+        """Configura la función de embeddings locales según la configuración elegida."""
         if self.embedding_type == "sentence-transformers":
             return SentenceTransformerEmbeddingFunction(model_name=self.embedding_model)
         else:
@@ -190,9 +190,9 @@ class VectorStoreManager:
             )
 
     def _init_chroma_client(self) -> Any:
-        """Initializes the persistent ChromaDB client."""
+        """Inicializa el cliente persistente de ChromaDB en disco."""
         if chromadb is None:
-            logger.error("ChromaDB library is not installed in the current environment.")
+            logger.error("La librería ChromaDB no está instalada en el entorno actual.")
             return None
         
         try:
@@ -200,14 +200,14 @@ class VectorStoreManager:
                 path=str(self.persist_directory),
                 settings=Settings(anonymized_telemetry=False, allow_reset=True)
             )
-            logger.info("ChromaDB PersistentClient initialized at: %s", self.persist_directory)
+            logger.info("ChromaDB PersistentClient inicializado en: %s", self.persist_directory)
             return client
         except Exception as e:
-            logger.error("Failed to initialize ChromaDB PersistentClient: %s", e)
+            logger.error("Error al inicializar PersistentClient de ChromaDB: %s", e)
             return None
 
     def _initialize_default_collections(self):
-        """Pre-initializes the three core collections if ChromaDB client is ready."""
+        """Pre-inicializa las 3 colecciones base del sistema si ChromaDB está disponible."""
         if self.client is None:
             return
         
@@ -216,16 +216,16 @@ class VectorStoreManager:
 
     def get_or_create_collection(self, collection_name: str) -> Any:
         """
-        Retrieves an existing ChromaDB collection or creates it with persistent metadata.
+        Obtiene una colección existente o la crea con distancia de coseno en ChromaDB.
         
         Args:
-            collection_name: Name of the collection (e.g. cve_knowledge_base)
+            collection_name: Nombre de la colección (ej. cve_knowledge_base)
             
         Returns:
-            ChromaDB Collection object or None
+            Objeto Collection de ChromaDB o None
         """
         if self.client is None:
-            logger.warning("ChromaDB client is unavailable.")
+            logger.warning("El cliente de ChromaDB no se encuentra disponible.")
             return None
 
         if collection_name in self._collections:
@@ -238,10 +238,10 @@ class VectorStoreManager:
                 metadata={"hnsw:space": "cosine"}
             )
             self._collections[collection_name] = collection
-            logger.info("Collection '%s' ready. Items count: %d", collection_name, collection.count())
+            logger.info("Colección '%s' lista. Total documentos: %d", collection_name, collection.count())
             return collection
         except Exception as e:
-            logger.error("Error creating/retrieving collection '%s': %s", collection_name, e)
+            logger.error("Error al crear/obtener la colección '%s': %s", collection_name, e)
             return None
 
     def add_documents(
@@ -252,30 +252,30 @@ class VectorStoreManager:
         ids: Optional[List[str]] = None
     ) -> bool:
         """
-        Adds or upserts text documents with metadata to a specified collection.
+        Inserta o actualiza (upsert) documentos con metadatos estructurados en una colección.
 
         Args:
-            collection_name: Target collection name.
-            documents: List of raw text chunks/descriptions.
-            metadatas: List of metadata dicts corresponding to documents (e.g. service, version, cve_id).
-            ids: Optional list of unique IDs. Generated automatically if not provided.
+            collection_name: Nombre de la colección destino.
+            documents: Lista de textos/fragmentos.
+            metadatas: Lista de diccionarios de metadatos (ej. servicio, versión, cve_id).
+            ids: Lista opcional de identificadores únicos.
 
         Returns:
-            bool: True if insertion succeeded, False otherwise.
+            bool: True si la inserción fue exitosa, False en caso contrario.
         """
         collection = self.get_or_create_collection(collection_name)
         if collection is None:
             return False
 
         if not documents:
-            logger.warning("No documents provided for insertion into '%s'.", collection_name)
+            logger.warning("No se proporcionaron documentos para insertar en '%s'.", collection_name)
             return False
 
         import uuid
         if ids is None:
             ids = [f"{collection_name}_{uuid.uuid4().hex[:12]}" for _ in range(len(documents))]
 
-        # Ensure metadata values are compatible with ChromaDB (strings, ints, floats, bools)
+        # Sanitizar metadatos para compatibilidad estricta con ChromaDB
         clean_metadatas = []
         if metadatas:
             for meta in metadatas:
@@ -297,14 +297,14 @@ class VectorStoreManager:
                 metadatas=clean_metadatas,
                 ids=ids
             )
-            logger.info("Successfully added/upserted %d documents into '%s'.", len(documents), collection_name)
+            logger.info("Se agregaron/actualizaron %d documentos en '%s'.", len(documents), collection_name)
             return True
         except Exception as e:
-            logger.error("Failed to add documents into '%s': %s", collection_name, e)
+            logger.error("Error al agregar documentos en '%s': %s", collection_name, e)
             return False
 
     def get_collection_stats(self) -> Dict[str, Any]:
-        """Returns document counts and status for all managed collections."""
+        """Retorna estadísticas del conteo de documentos por cada colección."""
         stats = {
             "persist_directory": str(self.persist_directory),
             "embedding_type": self.embedding_type,
@@ -322,7 +322,7 @@ class VectorStoreManager:
         return stats
 
     def reset_collection(self, collection_name: str) -> bool:
-        """Deletes and recreates a collection to clear all data."""
+        """Elimina y vuelve a crear una colección para vaciar su contenido."""
         if self.client is None:
             return False
         try:
@@ -330,14 +330,14 @@ class VectorStoreManager:
             if collection_name in self._collections:
                 del self._collections[collection_name]
             self.get_or_create_collection(collection_name)
-            logger.info("Collection '%s' reset successfully.", collection_name)
+            logger.info("Colección '%s' reiniciada exitosamente.", collection_name)
             return True
         except Exception as e:
-            logger.error("Failed to reset collection '%s': %s", collection_name, e)
+            logger.error("Error al reiniciar la colección '%s': %s", collection_name, e)
             return False
 
 
-# Global singleton instance for easy import across agents
+# Instancia singleton global para facilitar la importación en los agentes
 _default_vectorstore_manager: Optional[VectorStoreManager] = None
 
 
@@ -346,7 +346,7 @@ def get_vectorstore_manager(
     embedding_type: str = "ollama",
     embedding_model: Optional[str] = None
 ) -> VectorStoreManager:
-    """Returns or initializes the global VectorStoreManager instance."""
+    """Retorna o inicializa la instancia global de VectorStoreManager."""
     global _default_vectorstore_manager
     if _default_vectorstore_manager is None:
         _default_vectorstore_manager = VectorStoreManager(

@@ -1,10 +1,10 @@
 """
-Retriever Module for AI-CAPIBARA-HACKER.
-Provides semantic and hybrid search functions across persistent ChromaDB collections:
+Módulo de Recuperación (Retriever) para AI-CAPIBARA-HACKER.
+Proporciona funciones de búsqueda semántica e híbrida sobre las colecciones persistentes de ChromaDB:
 - query_vulnerabilities (service_name, version)
 - query_hardening_benchmarks (service_name, os_name)
 - query_internal_policies (query_text)
-- query_all_relevant_context (aggregated multi-collection retrieval)
+- query_all_relevant_context (búsqueda unificada multi-colección)
 """
 import re
 import logging
@@ -20,29 +20,27 @@ if not logger.handlers:
 
 def _distance_to_similarity(distance: Optional[float]) -> float:
     """
-    Converts ChromaDB distance (cosine or L2) to a normalized similarity score between 0.0 and 1.0.
-    Cosine distance range is [0.0, 2.0] where 0.0 means identical vectors.
+    Convierte la distancia de ChromaDB (coseno o L2) en un score de similitud normalizado entre 0.0 y 1.0.
+    El rango de distancia de coseno es [0.0, 2.0] donde 0.0 indica vectores idénticos.
     """
     if distance is None:
         return 1.0
-    # For cosine distance: similarity = 1 - (distance / 2) or 1 / (1 + distance)
-    # 1 - (distance / 2) mapped to [0, 1]
     sim = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
     return round(sim, 4)
 
 
 class SecurityRetriever:
     """
-    Retrieval engine providing hybrid search, metadata filtering and contextual enrichment
-    for AI-CAPIBARA-HACKER security auditing agents.
+    Motor de recuperación que implementa búsqueda híbrida, filtrado por metadatos y
+    enriquecimiento de contexto para los agentes de auditoría de AI-CAPIBARA-HACKER.
     """
 
     def __init__(self, vectorstore_manager: Optional[VectorStoreManager] = None):
         """
-        Initialize the SecurityRetriever.
+        Inicializa el SecurityRetriever.
         
         Args:
-            vectorstore_manager: Optional VectorStoreManager instance. Defaults to global manager.
+            vectorstore_manager: Instancia opcional de VectorStoreManager.
         """
         self.vsm = vectorstore_manager or get_vectorstore_manager()
 
@@ -55,28 +53,27 @@ class SecurityRetriever:
         min_score: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """
-        Performs hybrid retrieval: combines structured metadata filtering with semantic search.
-        If metadata filtering yields fewer than top_k results, falls back seamlessly to semantic search.
+        Ejecuta una búsqueda híbrida: combina filtrado por metadatos exactos con búsqueda semántica vectorial.
+        Si el filtrado estricto arroja menos resultados que top_k, complementa con búsqueda semántica amplia.
 
         Args:
-            collection_name: Target ChromaDB collection name.
-            query_text: Natural language query string for semantic vector search.
-            where_filter: Optional ChromaDB metadata filter dictionary (e.g. {"service": "apache"}).
-            top_k: Maximum number of snippets to return.
-            min_score: Optional minimum similarity threshold (0.0 to 1.0).
+            collection_name: Nombre de la colección objetivo en ChromaDB.
+            query_text: Texto de consulta para búsqueda semántica.
+            where_filter: Diccionario de filtrado de metadatos opcional (ej. {"service": "apache"}).
+            top_k: Número máximo de resultados a retornar.
+            min_score: Umbral mínimo opcional de similitud (0.0 a 1.0).
 
         Returns:
-            List of parsed result dictionaries sorted by similarity score.
+            Lista de fragmentos estructurados ordenados por score de similitud.
         """
         collection = self.vsm.get_or_create_collection(collection_name)
         if collection is None:
-            logger.warning("Collection '%s' is unavailable for retrieval.", collection_name)
+            logger.warning("La colección '%s' no está disponible para búsqueda.", collection_name)
             return []
 
-        # Check if collection is empty
         try:
             if collection.count() == 0:
-                logger.debug("Collection '%s' has 0 documents.", collection_name)
+                logger.debug("La colección '%s' tiene 0 documentos.", collection_name)
                 return []
         except Exception:
             pass
@@ -84,7 +81,7 @@ class SecurityRetriever:
         results: List[Dict[str, Any]] = []
         seen_ids = set()
 
-        # Step 1: Filtered Semantic Query (if where_filter provided)
+        # Paso 1: Búsqueda semántica filtrada por metadatos (si se definió filtro)
         if where_filter:
             try:
                 filtered_query_results = collection.query(
@@ -95,9 +92,9 @@ class SecurityRetriever:
                 )
                 results.extend(self._format_chroma_results(filtered_query_results, collection_name, seen_ids))
             except Exception as e:
-                logger.warning("Metadata-filtered query failed on collection '%s': %s", collection_name, e)
+                logger.warning("Búsqueda con filtro falló en colección '%s': %s", collection_name, e)
 
-        # Step 2: Broad Semantic Query to ensure top_k coverage or handle partial matches
+        # Paso 2: Búsqueda semántica amplia para completar top_k o tolerancia a variaciones
         remaining = top_k - len(results)
         if remaining > 0:
             try:
@@ -109,12 +106,12 @@ class SecurityRetriever:
                 broad_formatted = self._format_chroma_results(broad_query_results, collection_name, seen_ids)
                 results.extend(broad_formatted)
             except Exception as e:
-                logger.error("Semantic search failed on collection '%s': %s", collection_name, e)
+                logger.error("Búsqueda semántica amplia falló en colección '%s': %s", collection_name, e)
 
-        # Sort all results descending by similarity score
+        # Ordenar de forma descendente por score de similitud
         results.sort(key=lambda x: x.get("similarity_score", 0.0), reverse=True)
 
-        # Apply score threshold if provided
+        # Aplicar umbral de score mínimo si se solicitó
         if min_score is not None:
             results = [r for r in results if r.get("similarity_score", 0.0) >= min_score]
 
@@ -126,7 +123,7 @@ class SecurityRetriever:
         collection_name: str,
         seen_ids: set
     ) -> List[Dict[str, Any]]:
-        """Formats ChromaDB query results into standardized dictionaries."""
+        """Formatea los resultados crudos de ChromaDB en diccionarios limpios y estandarizados."""
         formatted = []
         ids_list = raw_results.get("ids", [[]])[0] if raw_results.get("ids") else []
         docs_list = raw_results.get("documents", [[]])[0] if raw_results.get("documents") else []
@@ -151,7 +148,7 @@ class SecurityRetriever:
                 "metadata": meta,
                 "similarity_score": similarity,
                 "distance": dist,
-                # Key shortcuts for convenience in agent prompts
+                # Atajos de campos clave para los prompts de los agentes
                 "service": meta.get("service", ""),
                 "version": meta.get("version", ""),
                 "cve_id": meta.get("cve_id", meta.get("id", "")),
@@ -169,22 +166,22 @@ class SecurityRetriever:
         min_score: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """
-        Queries the CVE Knowledge Base collection for known vulnerabilities, CVSS scores,
-        exploits, and remediation steps matching the given service and version.
+        Consulta la base de CVEs en busca de vulnerabilidades conocidas, métricas CVSS y exploits
+        coincidentes con el servicio y versión detectados.
 
         Args:
-            service_name: Name of the network service (e.g. 'apache', 'openssh', 'nginx', 'vsftpd').
-            version: Optional service version string (e.g. '2.4.49', '8.2p1', '1.18.0').
-            top_k: Maximum number of vulnerabilities to return.
-            min_score: Optional minimum similarity threshold.
+            service_name: Nombre del servicio de red (ej. 'apache', 'openssh', 'nginx', 'vsftpd').
+            version: Cadena de versión opcional (ej. '2.4.49', '8.2p1').
+            top_k: Número máximo de vulnerabilidades a retornar.
+            min_score: Umbral mínimo de similitud.
 
         Returns:
-            List of matching CVE records with content, CVSS metrics, metadata, and similarity score.
+            Lista de registros CVE con contenido técnico, CVSS y score de similitud.
         """
         service_clean = (service_name or "").strip().lower()
         version_clean = (version or "").strip()
 
-        # Build optimized domain-specific query prompt for vector embedding
+        # Construir prompt de búsqueda enriquecido con contexto de seguridad
         if version_clean:
             query_text = (
                 f"Security vulnerabilities, CVE exploits, remote code execution, CVSS vectors, "
@@ -196,12 +193,12 @@ class SecurityRetriever:
                 f"for service {service_clean}."
             )
 
-        # Build metadata filter if service is present
+        # Filtro de metadatos por servicio si está presente
         where_filter = None
         if service_clean:
             where_filter = {"service": service_clean}
 
-        logger.info("Executing query_vulnerabilities for service='%s', version='%s'", service_clean, version_clean)
+        logger.info("Ejecutando query_vulnerabilities para servicio='%s', version='%s'", service_clean, version_clean)
         return self.hybrid_search(
             collection_name=COLLECTION_CVES,
             query_text=query_text,
@@ -218,17 +215,17 @@ class SecurityRetriever:
         min_score: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """
-        Queries official CIS Benchmarks and security hardening guides for secure configuration
-        of services (e.g., Apache, SSH, Nginx, Linux OS).
+        Consulta las guías oficiales de CIS Benchmarks para configuración segura de servicios
+        (ej. Apache, SSH, Nginx, Linux OS, Bases de Datos).
 
         Args:
-            service_name: Service name or configuration topic (e.g. 'ssh', 'apache', 'nginx', 'firewall').
-            os_type: Optional target OS (e.g. 'linux', 'ubuntu', 'debian', 'rhel').
-            top_k: Maximum number of benchmark recommendations to return.
-            min_score: Optional minimum similarity threshold.
+            service_name: Nombre del servicio o tópico (ej. 'ssh', 'apache', 'nginx', 'linux').
+            os_type: Sistema operativo objetivo opcional (ej. 'linux', 'ubuntu').
+            top_k: Número máximo de recomendaciones a retornar.
+            min_score: Umbral mínimo de similitud.
 
         Returns:
-            List of CIS benchmark guidance snippets with remediation steps.
+            Lista de fragmentos de guías CIS con pasos de remediación.
         """
         service_clean = (service_name or "").strip().lower()
         os_clean = (os_type or "").strip().lower()
@@ -246,7 +243,7 @@ class SecurityRetriever:
             )
             where_filter = {"service": service_clean} if service_clean else None
 
-        logger.info("Executing query_hardening_benchmarks for service='%s', os='%s'", service_clean, os_clean)
+        logger.info("Ejecutando query_hardening_benchmarks para servicio='%s', os='%s'", service_clean, os_clean)
         return self.hybrid_search(
             collection_name=COLLECTION_CIS,
             query_text=query_text,
@@ -262,21 +259,21 @@ class SecurityRetriever:
         min_score: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """
-        Queries corporate security policies, auditing scopes, compliance rules, and SLAs.
+        Consulta las políticas internas de seguridad corporativa, alcances de auditoría y SLAs de remediación.
 
         Args:
-            query_text: Natural language description of the policy, service, or rule to look up.
-            top_k: Maximum number of policy rules to return.
-            min_score: Optional minimum similarity threshold.
+            query_text: Descripción en lenguaje natural del tema o regla a consultar.
+            top_k: Número máximo de reglas de política a retornar.
+            min_score: Umbral mínimo de similitud.
 
         Returns:
-            List of matched internal policy clauses and requirements.
+            Lista de cláusulas y requisitos de las políticas internas.
         """
         enhanced_query = (
             f"Organizational security policy, corporate compliance requirement, "
             f"auditing scope, and remediation SLA regarding: {query_text}"
         )
-        logger.info("Executing query_internal_policies for topic='%s'", query_text)
+        logger.info("Ejecutando query_internal_policies para tema='%s'", query_text)
         return self.hybrid_search(
             collection_name=COLLECTION_POLICIES,
             query_text=enhanced_query,
@@ -293,19 +290,19 @@ class SecurityRetriever:
         top_k_per_category: int = 3
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Consolidates relevant security intelligence across all 3 knowledge bases:
-        1. CVEs & Vulnerabilities
-        2. CIS Hardening Benchmarks
-        3. Internal Security Policies
+        Consolida la información de seguridad relevante a través de las 3 bases de conocimiento:
+        1. CVEs y Vulnerabilidades
+        2. Guías de Hardening CIS Benchmarks
+        3. Políticas Internas Corporativas
 
         Args:
-            service_name: Detected service name.
-            version: Detected version string.
-            os_type: Optional operating system.
-            top_k_per_category: Number of top results per knowledge base category.
+            service_name: Nombre del servicio detectado.
+            version: Cadena de versión detectada.
+            os_type: Sistema operativo opcional.
+            top_k_per_category: Cantidad de resultados por categoría.
 
         Returns:
-            Dictionary containing categorized search results.
+            Diccionario estructurado con los resultados categorizados.
         """
         cves = self.query_vulnerabilities(service_name=service_name, version=version, top_k=top_k_per_category)
         cis = self.query_hardening_benchmarks(service_name=service_name, os_type=os_type, top_k=top_k_per_category)
@@ -318,12 +315,12 @@ class SecurityRetriever:
         }
 
 
-# Module-level convenience functions using default global retriever instance
+# Instancia singleton del retriever por defecto para llamadas directas
 _default_retriever: Optional[SecurityRetriever] = None
 
 
 def get_retriever() -> SecurityRetriever:
-    """Returns or initializes the global SecurityRetriever singleton."""
+    """Retorna o inicializa la instancia global de SecurityRetriever."""
     global _default_retriever
     if _default_retriever is None:
         _default_retriever = SecurityRetriever()
@@ -336,7 +333,7 @@ def query_vulnerabilities(
     top_k: int = 5,
     min_score: Optional[float] = None
 ) -> List[Dict[str, Any]]:
-    """Convenience function to query CVE vulnerabilities using the default retriever."""
+    """Función de conveniencia para consultar vulnerabilidades CVE."""
     return get_retriever().query_vulnerabilities(
         service_name=service_name,
         version=version,
@@ -351,7 +348,7 @@ def query_hardening_benchmarks(
     top_k: int = 5,
     min_score: Optional[float] = None
 ) -> List[Dict[str, Any]]:
-    """Convenience function to query CIS hardening benchmarks using the default retriever."""
+    """Función de conveniencia para consultar guías de endurecimiento CIS."""
     return get_retriever().query_hardening_benchmarks(
         service_name=service_name,
         os_type=os_type,
@@ -365,7 +362,7 @@ def query_internal_policies(
     top_k: int = 5,
     min_score: Optional[float] = None
 ) -> List[Dict[str, Any]]:
-    """Convenience function to query corporate internal policies using the default retriever."""
+    """Función de conveniencia para consultar políticas internas corporativas."""
     return get_retriever().query_internal_policies(
         query_text=query_text,
         top_k=top_k,

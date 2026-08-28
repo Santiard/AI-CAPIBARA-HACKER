@@ -1,6 +1,6 @@
 """
-RAG and Knowledge Base Module for AI-CAPIBARA-HACKER.
-Exports VectorStoreManager, SecurityRetriever, and convenience retrieval functions.
+Módulo de RAG y Base de Conocimiento para AI-CAPIBARA-HACKER.
+Exporta VectorStoreManager, SecurityRetriever, funciones de consulta y el pipeline de ingestión.
 """
 from src.rag.vectorstore import (
     VectorStoreManager,
