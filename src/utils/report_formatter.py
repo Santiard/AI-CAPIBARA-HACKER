@@ -1,4 +1,4 @@
-﻿"""
+"""
 Formateador de reportes de auditoría en formato Markdown.
 Estructura hallazgos, inventario, análisis de severidad CVSS,
 recomendaciones de hardening CIS y notas del Agente Crítico.
@@ -66,7 +66,7 @@ def format_markdown_report(data: Union[AuditReportData, Dict[str, Any]]) -> str:
     # Matriz de Vulnerabilidades
     md_lines.append("## 3. 🛡️ Vulnerabilidades Correlacionadas (CVEs & CVSS)")
     if report.vulnerabilities:
-        md_lines.append("| CVE ID | Severidad | CVSS | Servicio Afectado | Descripción e Impacto |")
+        md_lines.append("| CVE ID | Severidad | CVSS v3 | Servicio Afectado | Resumen del Fallo |")
         md_lines.append("| :--- | :---: | :---: | :--- | :--- |")
         for v in report.vulnerabilities:
             cve = v.get("cve_id", "N/A")
@@ -77,6 +77,23 @@ def format_markdown_report(data: Union[AuditReportData, Dict[str, Any]]) -> str:
             
             badge = "🔴" if sev == "CRITICAL" else ("🟠" if sev == "HIGH" else ("🟡" if sev == "MEDIUM" else "🔵"))
             md_lines.append(f"| **{cve}** | {badge} {sev} | `{score}` | `{svc}` | {desc} |")
+
+        # Desglose interpretado por el Agente de Inteligencia
+        md_lines.append("\n### 🔍 Análisis Detallado e Interpretación de Riesgos por el Agente Intel\n")
+        for idx, v in enumerate(report.vulnerabilities, 1):
+            cve = v.get("cve_id", "N/A")
+            sev = v.get("severity", "UNKNOWN")
+            score = v.get("cvss_score", 0.0)
+            svc = v.get("affected_service", "General")
+            desc = v.get("description", "Sin descripción disponible.")
+            os_beh = v.get("os_behavior", "El servicio escucha localmente en el puerto indicado.")
+            risk_imp = v.get("risk_impact", "Representa un vector potencial de acceso no autorizado.")
+            badge = "🔴" if sev == "CRITICAL" else ("🟠" if sev == "HIGH" else ("🟡" if sev == "MEDIUM" else "🔵"))
+            
+            md_lines.append(f"#### 3.{idx} [{cve}] {svc} ({badge} {sev} - CVSS {score})")
+            md_lines.append(f"- **¿Qué es esta vulnerabilidad?** {desc}")
+            md_lines.append(f"- **Comportamiento en tu Sistema Operativo:** {os_beh}")
+            md_lines.append(f"- **¿Por qué es un riesgo?:** {risk_imp}\n")
     else:
         md_lines.append("✅ *No se identificaron CVEs conocidos asociados a las versiones detectadas.*")
 
