@@ -1,4 +1,4 @@
-﻿from .nmap_parser import (
+from .nmap_parser import (
     DiscoveredService,
     ScanTargetReport,
     parse_nmap_xml,
@@ -12,6 +12,15 @@ from .cvss_calculator import (
     evaluate_vulnerability,
     cvss_evaluator_tool
 )
+from .host_inspector import (
+    HostEnvironmentProfile,
+    LocalListeningService,
+    get_system_profile,
+    inspect_listening_services,
+    run_active_host_diagnostics,
+    get_system_profile_tool,
+    inspect_listening_services_tool
+)
 
 __all__ = [
     "DiscoveredService",
@@ -23,5 +32,12 @@ __all__ = [
     "get_severity_label",
     "get_impact_recommendation",
     "evaluate_vulnerability",
-    "cvss_evaluator_tool"
+    "cvss_evaluator_tool",
+    "HostEnvironmentProfile",
+    "LocalListeningService",
+    "get_system_profile",
+    "inspect_listening_services",
+    "run_active_host_diagnostics",
+    "get_system_profile_tool",
+    "inspect_listening_services_tool"
 ]
