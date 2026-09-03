@@ -122,7 +122,9 @@ def main():
             index=0
         )
         
-        raw_scan_data = ""
+        if "raw_scan_data" not in st.session_state:
+            st.session_state.raw_scan_data = ""
+            
         is_active_mode = "Activo" in mode_choice
         start_execution = False
         
@@ -135,13 +137,15 @@ def main():
                 sample_path = os.path.join("data", "scans", "sample_scan.xml")
                 if os.path.exists(sample_path):
                     with open(sample_path, "r", encoding="utf-8") as f:
-                        raw_scan_data = f.read()
-                    st.success("sample_scan.xml cargado (6 puertos: FTP, SSH, Apache, MySQL, Tomcat).")
+                        st.session_state.raw_scan_data = f.read()
             elif uploaded_file is not None:
-                raw_scan_data = uploaded_file.getvalue().decode("utf-8")
-                st.success("Archivo de escaneo cargado exitosamente.")
+                st.session_state.raw_scan_data = uploaded_file.getvalue().decode("utf-8")
                 
-            start_execution = st.button("▶️ Iniciar Auditoría Pasiva", type="primary", disabled=not raw_scan_data)
+            if st.session_state.raw_scan_data:
+                st.success("Datos de escaneo cargados exitosamente.")
+                
+            start_execution = st.button("▶️ Iniciar Auditoría Pasiva", type="primary", disabled=not st.session_state.raw_scan_data)
+            raw_scan_data = st.session_state.raw_scan_data
         
         else:
             st.subheader("🖥️ Diagnóstico Activo Local")
