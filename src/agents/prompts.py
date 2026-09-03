@@ -84,17 +84,23 @@ Tu rol es fundamental para evitar alucinaciones, detectar inconsistencias técni
 Evalúa:
 1. Coherencia: ¿Las vulnerabilidades corresponden a los servicios realmente detectados?
 2. Seguridad: ¿Las propuestas de remediación son viables y no romperán la disponibilidad del sistema?
-3. Veracidad: ¿No se inventaron CVEs inexistentes?
+3. Veracidad: ¿No se inventaron CVEs inexistentes o que no aplican?
+
+Responde ÚNICAMENTE con un JSON que contenga las siguientes claves:
+- "verdict": "approve" si todo es correcto, o "reject" si detectas alucinaciones.
+- "feedback": Tu justificación técnica detallada.
+- "invalid_cves": Una lista con los CVE_IDs (ej. ["CVE-2022-42475"]) que consideres alucinaciones y DEBAN SER ELIMINADOS. Si no hay ninguno, envía [].
+- "invalid_hardening": Una lista con el título o "cis_reference" de las propuestas de hardening (ej. ["CIS-APACHE-1"]) que sean incorrectas o alucinadas y DEBAN SER ELIMINADAS. Si no hay ninguna, envía [].
 
 ### Ejemplos Few-Shot de Decisión:
 Caso 1 (Aprobación):
-Entrada: vsftpd 2.3.4 asociado a CVE-2011-2523 con propuesta de detener el servicio y cerrar puerto 21.
+Entrada: vsftpd 2.3.4 asociado a CVE-2011-2523 con propuesta de detener el servicio.
 Salida JSON:
-{"verdict": "approve", "feedback": "Correlación exacta con el backdoor conocido de vsftpd 2.3.4. La remediación de aislamiento es estándar y segura."}
+{"verdict": "approve", "feedback": "Correlación exacta.", "invalid_cves": [], "invalid_hardening": []}
 
-Caso 2 (Rechazo):
-Entrada: Servicio MySQL 8.0 asociado erróneamente a un CVE de Apache Log4j.
+Caso 2 (Rechazo con limpieza de datos):
+Entrada: Servicio MySQL 8.0 asociado a CVE-2021-44228 (Log4j) y propuesta de hardening CIS-APACHE-1.
 Salida JSON:
-{"verdict": "reject", "feedback": "Alucinación detectada: se correlacionó una vulnerabilidad de Apache en un motor de base de datos MySQL."}
+{"verdict": "reject", "feedback": "Alucinación detectada: Apache Log4j en MySQL.", "invalid_cves": ["CVE-2021-44228"], "invalid_hardening": ["CIS-APACHE-1"]}
 """
 

@@ -168,9 +168,15 @@ def node_intel(state: AgentState):
     # Ordenar por severidad / CVSS (los más críticos primero)
     candidates.sort(key=lambda x: x["score"], reverse=True)
     
-    # Interpretar con el LLM únicamente los hallazgos principales (máximo 2) para no bloquear la ejecución
-    llm_interpret_count = 0
-    max_llm_interprets = 2
+    # Interpretar con el LLM los hallazgos principales en LOTE (por defecto 10 para acelerar la ejecución local)
+    import os
+    max_llm_interprets = int(os.getenv("MAX_LLM_INTERPRETS", "10"))
+    
+    top_candidates = candidates[:max_llm_interprets]
+    
+    logger.info(f"Enviando lote de {len(top_candidates)} vulnerabilidades al LLM Intérprete...")
+    from src.agents.interpreter import batch_interpret_vulnerabilities
+    batch_results = batch_interpret_vulnerabilities(top_candidates, host_os=host_os)
     
     for cand in candidates:
         cve_id = cand["cve_id"]
@@ -181,22 +187,13 @@ def node_intel(state: AgentState):
         severity = cand["severity"]
         raw_content = cand["raw_content"]
         
-        if llm_interpret_count < max_llm_interprets:
-            logger.info(f"Agente Intérprete analizando con LLM: {cve_id} ({svc_name})")
-            interp = interpret_vulnerability(
-                cve_id=cve_id,
-                service_name=svc_name,
-                port=port,
-                raw_content=raw_content,
-                host_os=host_os,
-                product=product
-            )
-            llm_interpret_count += 1
-            desc = interp.get("summary", "")
-            os_beh = interp.get("os_behavior", "")
-            risk_imp = interp.get("risk_impact", "")
+        if cve_id in batch_results:
+            logger.info(f"LLM analizó correctamente: {cve_id}")
+            desc = batch_results[cve_id].get("summary", "")
+            os_beh = batch_results[cve_id].get("os_behavior", "")
+            risk_imp = batch_results[cve_id].get("risk_impact", "")
         else:
-            # Extracción rápida basada en el contenido recuperado de ChromaDB
+            # Fallback rápido para las que no cupieron en el límite o si el LLM omitió la respuesta
             clean_first_sentence = raw_content.replace("\n", " ").strip()
             desc = clean_first_sentence[:180] + "..." if len(clean_first_sentence) > 180 else clean_first_sentence
             os_beh = f"Detectado en el socket {svc_name} (puerto {port}) bajo {host_os}."

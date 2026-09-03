@@ -1,4 +1,4 @@
-﻿# 🦫 AI-CAPIBARA-HACKER
+# 🦫 AI-CAPIBARA-HACKER
 ### Sistema Multi-Agente de Auditoría de Seguridad, Análisis de Vulnerabilidades y Remediación
 
 Proyecto desarrollado para la materia **AI AGENTIC ENGINEERING**. Este sistema implementa un ecosistema multiagente autónomo local capaz de operar en **Modo Pasivo** (ingesta y análisis de escaneos de red Nmap XML/JSON) y **Modo Activo** (diagnóstico local del host mediante *Tool Calling* seguro de sockets TCP y perfil de OS), correlacionar vulnerabilidades técnicas (CVEs), contextualizar riesgos con un agente intérprete, contrastar configuraciones contra guías de endurecimiento (*CIS Benchmarks*) y emitir informes ejecutivos descargables en Markdown y PDF oficial.
@@ -153,41 +153,93 @@ flowchart TD
 
 ## 🚀 Instalación y Puesta en Marcha
 
-### 1. Prerrequisitos de Ollama
-Asegúrate de tener Ollama corriendo en segundo plano y descarga los modelos requeridos:
-```bash
-# Iniciar servidor Ollama (puerto 11434)
-ollama serve
+### ⚡ Opción 1: Instalación Rápida Automatizada (Recomendada)
 
-# Descargar modelo LLM y modelo de Embeddings
-ollama pull qwen2.5:14b
-ollama pull nomic-embed-text
+El proyecto incluye scripts de instalación que configuran automáticamente el entorno virtual (`venv`), instalan todas las dependencias, descargan los modelos de Ollama (`qwen2.5:14b` y `nomic-embed-text`) y cargan la base de conocimiento vectorial en ChromaDB.
+
+#### En Windows (CMD / PowerShell o doble clic):
+```cmd
+.\install.bat
 ```
 
-### 2. Clonar el repositorio y configurar el entorno
+#### En Linux, macOS o Git Bash:
 ```bash
-git clone https://github.com/Santiard/AI-CAPIBARA-HACKER.git
-cd AI-CAPIBARA-HACKER
-
-# Crear y activar entorno virtual (Windows)
-python -m venv venv
-.\venv\Scripts\activate
-
-# Instalar dependencias
-pip install -r requirements.txt
+chmod +x install.sh run.sh
+./install.sh
 ```
 
-### 3. Cargar la Base de Conocimiento Vectorial (RAG)
-Si es la primera vez que ejecutas el proyecto, inicializa ChromaDB con la base de datos de CVEs y CIS Benchmarks:
-```bash
-python scripts/seed_rag_data.py
-```
+---
 
-### 4. Iniciar la Aplicación Web
-```bash
-python -m streamlit run src/ui/app.py
-```
+### 🕹️ Cómo Iniciar la Aplicación
+
+Una vez completada la instalación, puedes iniciar la interfaz web con un solo comando:
+
+- **En Windows:**
+  ```cmd
+  .\run.bat
+  ```
+- **En Linux / macOS / Git Bash:**
+  ```bash
+  ./run.sh
+  ```
+- **O de forma manual:**
+  ```bash
+  # Windows (CMD/PowerShell)
+  .\venv\Scripts\activate
+  streamlit run src/ui/app.py
+
+  # Linux / macOS / Git Bash
+  source venv/Scripts/activate   # o source venv/bin/activate
+  streamlit run src/ui/app.py
+  ```
+
 Abre tu navegador en `http://localhost:8501`.
+
+---
+
+### 🛠️ Opción 2: Instalación Manual Paso a Paso
+
+Si prefieres realizar el proceso paso a paso:
+
+1. **Prerrequisitos de Ollama:**
+   Asegúrate de tener [Ollama](https://ollama.com/) instalado y corriendo en segundo plano:
+   ```bash
+   ollama pull qwen2.5:14b
+   ollama pull nomic-embed-text
+   ```
+
+2. **Clonar el repositorio y configurar el entorno:**
+   ```bash
+   git clone https://github.com/Santiard/AI-CAPIBARA-HACKER.git
+   cd AI-CAPIBARA-HACKER
+
+   # Crear entorno virtual
+   python -m venv venv
+
+   # Activar entorno virtual:
+   # En Windows PowerShell / CMD:
+   .\venv\Scripts\activate
+   # En Git Bash:
+   source venv/Scripts/activate
+   # En Linux / macOS:
+   source venv/bin/activate
+
+   # Copiar archivo de entorno y configurar dependencias
+   cp .env.example .env
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+3. **Cargar la Base de Conocimiento Vectorial (RAG):**
+   Inicializa ChromaDB con las bases de datos de CVEs, guías CIS Benchmarks y políticas:
+   ```bash
+   python src/rag/ingest.py
+   ```
+
+4. **Iniciar la Aplicación Web:**
+   ```bash
+   streamlit run src/ui/app.py
+   ```
 
 ---
 

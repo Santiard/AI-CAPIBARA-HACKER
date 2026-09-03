@@ -43,3 +43,4 @@ Thumbs.db
 *.log
 temp/
 exports/
+.env.example

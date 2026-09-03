@@ -1,4 +1,4 @@
-﻿"""
+"""
 Agente Intérprete y Explicador de Vulnerabilidades (Intel Explainer).
 Toma los hallazgos técnicos recuperados de ChromaDB y genera explicaciones claras
 en tres dimensiones clave:
@@ -80,3 +80,82 @@ Genera la explicación contextualizada en formato JSON con 'summary', 'os_behavi
         "os_behavior": f"El servicio se encuentra activo en el puerto local {port} bajo {host_os}. Si el socket escucha en 0.0.0.0, es accesible por otros equipos de la red local.",
         "risk_impact": f"Permite a un atacante en la red aprovechar la debilidad en {service_name} para degradar la integridad o confidencialidad del sistema."
     }
+
+BATCH_INTERPRETER_PROMPT = """Eres el Agente Experto en Análisis de Vulnerabilidades.
+A continuación recibirás una lista de vulnerabilidades detectadas en un sistema {host_os}.
+Tu función es analizarlas y traducirlas a un lenguaje claro y comprensible.
+
+¡IMPORTANTE!: TODAS LAS EXPLICACIONES (summary, os_behavior, risk_impact) DEBEN ESTAR ESCRITAS 100% EN ESPAÑOL. NO devuelvas texto en inglés.
+
+Responde ESTRICTAMENTE con un único objeto JSON donde las claves sean los identificadores de la vulnerabilidad (ej. "CVE-2021-1234") y el valor sea un objeto con las 3 claves: summary, os_behavior y risk_impact.
+
+Ejemplo de salida esperada:
+{{
+  "CVE-2021-1234": {{
+    "summary": "...",
+    "os_behavior": "...",
+    "risk_impact": "..."
+  }},
+  "CVE-2024-5678": {{
+    "summary": "...",
+    "os_behavior": "...",
+    "risk_impact": "..."
+  }}
+}}
+"""
+
+def batch_interpret_vulnerabilities(
+    candidates: list,
+    host_os: str = "Windows 11"
+) -> Dict[str, Dict[str, str]]:
+    """
+    Invoca al LLM local para interpretar en lote múltiples vulnerabilidades, optimizando tiempo.
+    """
+    if not candidates:
+        return {}
+        
+    prompt_lines = [f"Interpreta las siguientes vulnerabilidades para el sistema {host_os}:\n"]
+    
+    for cand in candidates:
+        cve_id = cand["cve_id"]
+        svc_name = cand["product"] or cand["service_name"]
+        port = cand["port"]
+        raw_content = cand["raw_content"][:300]  # Reducir aún más para evitar sesgo al inglés
+        
+        prompt_lines.append(f"--- Vulnerabilidad: {cve_id} ---")
+        prompt_lines.append(f"Servicio: {svc_name} (Puerto {port})")
+        prompt_lines.append(f"Información técnica en inglés: {raw_content}\n")
+        
+    prompt_lines.append("\nREGLA DE ORO: DEBES TRADUCIR TODO Y RESPONDER ÚNICAMENTE EN ESPAÑOL. NO USES INGLÉS EN LOS VALORES DEL JSON.")
+    prompt_user = "\n".join(prompt_lines)
+    
+    results = {}
+    try:
+        llm = ChatOllama(
+            model=OLLAMA_MODEL, 
+            temperature=0.1, 
+            base_url=OLLAMA_BASE_URL,
+            num_ctx=8192,
+            num_predict=4096
+        )
+        response = llm.invoke([
+            SystemMessage(content=BATCH_INTERPRETER_PROMPT.format(host_os=host_os)),
+            HumanMessage(content=prompt_user)
+        ])
+        content = response.content.strip()
+        
+        # Extraer JSON del bloque
+        match = re.search(r"\{[\s\S]*\}", content)
+        if match:
+            parsed = json.loads(match.group(0))
+            for cve, data in parsed.items():
+                if isinstance(data, dict):
+                    results[cve] = {
+                        "summary": str(data.get("summary", "")).strip(),
+                        "os_behavior": str(data.get("os_behavior", "")).strip(),
+                        "risk_impact": str(data.get("risk_impact", "")).strip()
+                    }
+    except Exception as e:
+        logger.warning(f"Fallo al invocar LLM en lote: {e}")
+        
+    return results
