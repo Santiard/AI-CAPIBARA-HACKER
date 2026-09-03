@@ -117,6 +117,8 @@ def node_intel(state: AgentState):
     seen_cves = set()
     seen_service_signatures = set()
     
+    candidates = []
+    
     for s in services:
         svc_name = s.get("service", "")
         version = s.get("version", "")
@@ -138,7 +140,6 @@ def node_intel(state: AgentState):
                 top_k=2
             )
             for res in rag_results:
-                # Solo aceptar resultados con suficiente similitud o coincidencia de servicio
                 similarity = res.get("similarity_score", 1.0)
                 if similarity < 0.40 and not (svc_name in res.get("content", "").lower()):
                     continue
@@ -152,28 +153,66 @@ def node_intel(state: AgentState):
                 severity = res.get("severity") or res.get("metadata", {}).get("severity", "MEDIUM")
                 raw_content = res.get("content") or res.get("summary") or res.get("text", "")
                 
-                # Invocamos al Agente Intérprete para contextualizar en el OS del usuario
-                interp = interpret_vulnerability(
-                    cve_id=cve_id,
-                    service_name=svc_name,
-                    port=port,
-                    raw_content=raw_content,
-                    host_os=host_os,
-                    product=product
-                )
-                
-                cve_findings.append({
-                    "cve": cve_id,
+                candidates.append({
                     "cve_id": cve_id,
+                    "service_name": svc_name,
+                    "product": product,
+                    "port": port,
+                    "score": score,
                     "severity": severity,
-                    "cvss_score": score,
-                    "affected_service": f"{product or svc_name} (Puerto {port})",
-                    "description": interp.get("summary", ""),
-                    "os_behavior": interp.get("os_behavior", ""),
-                    "risk_impact": interp.get("risk_impact", "")
+                    "raw_content": raw_content
                 })
         except Exception as e:
             logger.error(f"Error consultando RAG CVE para servicio {svc_name}: {e}")
+            
+    # Ordenar por severidad / CVSS (los más críticos primero)
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    
+    # Interpretar con el LLM únicamente los hallazgos principales (máximo 2) para no bloquear la ejecución
+    llm_interpret_count = 0
+    max_llm_interprets = 2
+    
+    for cand in candidates:
+        cve_id = cand["cve_id"]
+        svc_name = cand["service_name"]
+        product = cand["product"]
+        port = cand["port"]
+        score = cand["score"]
+        severity = cand["severity"]
+        raw_content = cand["raw_content"]
+        
+        if llm_interpret_count < max_llm_interprets:
+            logger.info(f"Agente Intérprete analizando con LLM: {cve_id} ({svc_name})")
+            interp = interpret_vulnerability(
+                cve_id=cve_id,
+                service_name=svc_name,
+                port=port,
+                raw_content=raw_content,
+                host_os=host_os,
+                product=product
+            )
+            llm_interpret_count += 1
+            desc = interp.get("summary", "")
+            os_beh = interp.get("os_behavior", "")
+            risk_imp = interp.get("risk_impact", "")
+        else:
+            # Extracción rápida basada en el contenido recuperado de ChromaDB
+            clean_first_sentence = raw_content.replace("\n", " ").strip()
+            desc = clean_first_sentence[:180] + "..." if len(clean_first_sentence) > 180 else clean_first_sentence
+            os_beh = f"Detectado en el socket {svc_name} (puerto {port}) bajo {host_os}."
+            risk_imp = "Riesgo moderado dependiente de la exposición del puerto a redes públicas o no confiables."
+            
+        cve_findings.append({
+            "cve": cve_id,
+            "cve_id": cve_id,
+            "severity": severity,
+            "cvss_score": score,
+            "affected_service": f"{product or svc_name} (Puerto {port})",
+            "description": desc or f"Vulnerabilidad registrada para {svc_name}.",
+            "os_behavior": os_beh,
+            "risk_impact": risk_imp
+        })
+
             
     # Fallback si no hubo matches directos
     if not cve_findings:

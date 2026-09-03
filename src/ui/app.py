@@ -155,8 +155,10 @@ def main():
             )
             raw_scan_data = "active_mode_trigger"
 
-    # --- Línea de Tiempo de Agentes ---
-    render_agent_timeline(st.session_state.current_node)
+    # --- Línea de Tiempo de Agentes con Placeholder Dinámico ---
+    timeline_placeholder = st.empty()
+    with timeline_placeholder.container():
+        render_agent_timeline(st.session_state.current_node)
     
     # Contenedores dinámicos con placeholders únicos
     logs_col, cards_col = st.columns([1, 1])
@@ -176,6 +178,10 @@ def main():
     
     if start_execution and raw_scan_data:
         mode_str = "active" if is_active_mode else "passive"
+        st.session_state.current_node = "Orquestador"
+        with timeline_placeholder.container():
+            render_agent_timeline("Orquestador")
+            
         st.session_state.logs = [f"Iniciando flujo multiagente en Modo {mode_str.upper()}..."]
         st.session_state.execution_finished = False
         st.session_state.human_review_pending = False
@@ -194,13 +200,38 @@ def main():
         
         loader_placeholder = render_loading_capybara()
         
+        next_node_map = {
+            "Orquestador": "Parser",
+            "Parser": "Intel",
+            "Intel": "Compliance",
+            "Compliance": "Critic",
+            "Critic": "FinalReport"
+        }
+        
+        node_status_desc = {
+            "Orquestador": "Orquestador preparando plan y permisos...",
+            "Parser": "Parser inspeccionando puertos y sockets...",
+            "Intel": "Intel correlacionando CVEs e interpretando riesgos...",
+            "Compliance": "Compliance buscando guías de endurecimiento CIS...",
+            "Critic": "Critic evaluando coherencia técnica (QA)..."
+        }
+        
         try:
             for event in agent_graph.stream(initial_state, st.session_state.thread_config):
                 for node_name, _ in event.items():
-                    st.session_state.current_node = node_name
+                    # Notificar que el nodo actual terminó
                     st.session_state.logs.append(f"Agente [{node_name}] completó su tarea.")
                     
-                    # Actualizar en el mismo contenedor en tiempo real
+                    # Activar visualmente el siguiente nodo en ejecución
+                    next_node = next_node_map.get(node_name, node_name)
+                    st.session_state.current_node = next_node
+                    
+                    with timeline_placeholder.container():
+                        render_agent_timeline(next_node)
+                    
+                    if next_node in node_status_desc and next_node != node_name:
+                        st.session_state.logs.append(f"Iniciando: {node_status_desc[next_node]}")
+                    
                     with logs_placeholder.container():
                         render_live_logs(st.session_state.logs)
                     
@@ -220,6 +251,9 @@ def main():
         current_graph_state = agent_graph.get_state(st.session_state.thread_config)
         if current_graph_state.next:
             st.session_state.human_review_pending = True
+            st.session_state.current_node = "Critic"
+            with timeline_placeholder.container():
+                render_agent_timeline("Critic")
             st.session_state.logs.append("⏸️ Ejecución pausada por el Agente Crítico. Esperando revisión humana.")
             with logs_placeholder.container():
                 render_live_logs(st.session_state.logs)
@@ -246,6 +280,7 @@ def main():
                     st.session_state.execution_finished = True
                     st.session_state.graph_state = agent_graph.get_state(st.session_state.thread_config).values
                     st.rerun()
+
 
 
     # --- Renderizado Final del Reporte ---
