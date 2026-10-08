@@ -31,57 +31,109 @@ Demostrar la integración práctica de los principales paradigmas de la **Ingeni
 
 ## 🏛️ Arquitectura del Sistema
 
+### Diagrama del StateGraph Multi-Agente (LangGraph)
+
+> **Nota:** El diagrama siguiente refleja fielmente la implementación real de [`src/agents/graph.py`](src/agents/graph.py) — nodos, aristas deterministas, arista condicional `router_critic`, punto de interrupción HITL y pipeline RAG Híbrido + Cross-Encoder.
+
 ```mermaid
 flowchart TD
-    User([👤 Auditor / Usuario]) --> UI[🖥️ Dashboard Streamlit Cyber UI]
-    
-    subgraph UI_Controls [Modos de Operación]
-        ModePassive[📄 Modo Pasivo: Carga de Nmap XML/JSON]
-        ModeActive[⚡ Modo Activo: Diagnóstico de Host Local]
-    end
-    
-    UI --> UI_Controls
-    UI_Controls --> Orchestrator[🧭 Agente Orquestador]
+    %% ── ENTRADA ──────────────────────────────────────────────────
+    User(["👤 Auditor / Operador"])
+    UI["🖥️ Dashboard Streamlit\nCyber UI"]
 
-    subgraph MAS [🤖 Ecosistema Multi-Agente - LangGraph StateGraph]
-        Orchestrator -->|Plan & Modo de Auditoría| Parser[🔍 Agente Parser & Profiler]
-        
-        Parser -->|Servicios, Puertos & Versiones| Intel[🛡️ Agente Intel & RAG CVE]
-        Intel -->|Contexto Técnico + Host OS| Interpreter[🧠 Agente Intérprete de Vulnerabilidades]
-        Interpreter -->|Ficha de Riesgo Inteligible| Compliance[📋 Agente Compliance & Hardening CIS]
-        
-        Compliance -->|Propuestas de Endurecimiento| Critic[⚖️ Agente Crítico & QA]
-        
-        Critic --> RouterCritic{¿Dictamen Aprobado o Reintento Excedido?}
-        RouterCritic -- "Reject (1er ciclo)" --> Compliance
-        RouterCritic -- "Approve o Circuit Breaker" --> HITL[⏸️ Pausa Human-in-the-Loop]
+    subgraph MODES ["🕹️ Modos de Entrada"]
+        ModeP["📄 Modo Pasivo\nArchivo Nmap XML / JSON"]
+        ModeA["⚡ Modo Activo\nDiagnóstico del Host Local"]
     end
 
-    subgraph KnowledgeBase [📚 RAG Persistente ChromaDB]
-        ColCVE[(Colección: cve_knowledge_base)]
-        ColCIS[(Colección: hardening_cis_benchmarks)]
-        ColPolicies[(Colección: internal_policies)]
-        
-        ColCVE -.->|Búsqueda Semántica de CVEs| Intel
-        ColCIS -.->|Guías de Hardening por OS| Compliance
+    User --> UI
+    UI --> MODES
+    MODES --> N1
+
+    %% ── STATEGRAPH (LangGraph) ───────────────────────────────────
+    subgraph SG ["🤖 LangGraph StateGraph  ·  AgentState"]
+        direction TB
+
+        N1["🧭 Orquestador\nValida modo · Plan de auditoría"]
+        N2["🔍 Parser / Host Profiler\nExtrae servicios · puertos · versiones"]
+        N3["🛡️ Intel\nRAG CVEs + LLM Intérprete"]
+        N4["📋 Compliance\nRAG CIS Benchmarks + Políticas"]
+        N5["⚖️ Critic\nQA con LLM · Dictamen estructurado"]
+        ROUTE{{"router_critic\n¿approve? ¿retries ≥ 1?"}}
+        HITL["⏸️ interrupt_before: FinalReport\n── Human-in-the-Loop ──\n✅ Aprobar  ✏️ Editar  ❌ Rechazar"]
+        N6["📄 FinalReport\nMarkdown + PDF exportable"]
+        N7["✂️ PruneContext\nSliding Window del historial"]
+        DONE(["END"])
+
+        %% Aristas deterministas (línea sólida)
+        N1 -->|"determinista"| N2
+        N2 -->|"determinista"| N3
+        N3 -->|"determinista"| N4
+        N4 -->|"determinista"| N5
+        N5 --> ROUTE
+        N6 -->|"determinista"| N7
+        N7 -->|"determinista"| DONE
+
+        %% Aristas condicionales (router_critic)
+        ROUTE -->|"reject  ·  retries = 0\nCircuit Breaker OFF"| N4
+        ROUTE -->|"approve  OR  retries ≥ 1\nCircuit Breaker ON"| HITL
+
+        %% Ramas HITL → FinalReport
+        HITL -->|"✅ APROBAR\ngraph.invoke continúa"| N6
+        HITL -->|"✏️ EDITAR\ngraph.update_state + reinvocar"| N6
+        HITL -->|"❌ RECHAZAR\nflujo cancelado"| DONE
     end
 
-    subgraph ToolsModule [⚙️ Tools & Script Execution]
-        ToolNmap[parse_nmap_scan_tool]
-        ToolCVSS[cvss_evaluator_tool]
-        ToolHost[get_system_profile_tool]
-        ToolSockets[inspect_listening_services_tool]
-        
-        Parser -.-> ToolNmap
-        Parser -.-> ToolHost
-        Parser -.-> ToolSockets
-        Intel -.-> ToolCVSS
+    %% ── CAPA RAG ─────────────────────────────────────────────────
+    subgraph RAG ["📚 RAG Persistente  ·  ChromaDB"]
+        direction TB
+
+        subgraph PHASE1 ["Fase 1 — Recuperación Híbrida"]
+            FILT["🔎 Búsqueda Filtrada\n(metadatos exactos)"]
+            DENSE["🧲 Búsqueda Densa Ampliada\n(vectores coseno · top_k × 3)"]
+        end
+
+        subgraph PHASE2 ["Fase 2 — Re-ranking"]
+            CE["🎯 Cross-Encoder\nms-marco-MiniLM-L-6-v2\nPredicción de relevancia real"]
+        end
+
+        COL_CVE[("cve_knowledge_base")]
+        COL_CIS[("hardening_cis_benchmarks")]
+        COL_POL[("internal_policies")]
+
+        COL_CVE --> FILT
+        COL_CIS --> FILT
+        FILT --> DENSE
+        DENSE --> CE
     end
 
-    HITL -->|Aprobación Humana Explícita| FinalReport[📄 Agente Generador de Reporte Final]
-    FinalReport --> ContextPruning[✂️ Podado de Contexto / Sliding Window]
-    ContextPruning --> OutputDelivery[📥 Descarga de PDF Oficial & Markdown]
-    OutputDelivery --> UI
+    %% ── TOOLS ────────────────────────────────────────────────────
+    subgraph TOOLS ["⚙️ Tool Calling (LangChain @tool)"]
+        T1["parse_nmap_xml"]
+        T2["generate_mock_scan"]
+        T3["run_active_host_diagnostics\n(psutil · socket · platform)"]
+        T4["cvss_evaluator"]
+    end
+
+    %% ── CHECKPOINTER ─────────────────────────────────────────────
+    MEM[("💾 MemorySaver\nCheckpointer\n(thread_id persistente)")]
+
+    %% ── CONEXIONES EXTERNAS ──────────────────────────────────────
+    N2 -.->|"Modo Pasivo"| T1
+    N2 -.->|"Modo Pasivo (fallback)"| T2
+    N2 -.->|"Modo Activo"| T3
+    N3 -.->|"CVSS v3.1"| T4
+
+    N3 -.->|"query_vulnerabilities()\nhybrid_search + re-ranking"| CE
+    N4 -.->|"query_hardening_benchmarks()\nhybrid_search + re-ranking"| CE
+    CE -.->|"top_k docs ordenados\npor cross_score"| N3
+    CE -.->|"top_k docs ordenados\npor cross_score"| N4
+    COL_POL -.->|"query_internal_policies()"| N4
+
+    SG <-.->|"checkpoint en cada nodo\nrestore en interrupt_before"| MEM
+
+    N6 -->|"audit_report.pdf"| OUT["📥 Exportación Dual\nMarkdown · PDF (ReportLab)"]
+    OUT --> UI
 ```
 
 ---
@@ -148,6 +200,90 @@ flowchart TD
 | **Generación de PDFs** | ReportLab | Compilación de informes ejecutivos descargables |
 | **Dashboard UI** | Streamlit | Interfaz visual interactiva reactiva |
 | **Lenguaje** | Python 3.10+ | Lenguaje base del proyecto |
+
+---
+
+## 🧩 Decisiones de Diseño Arquitectónico — Corte 2
+
+### 1. ¿Por qué LangGraph con aristas condicionales en lugar de ruteo libre?
+
+Una cadena secuencial libre (`LLMChain` o `AgentExecutor` clásico) transfiere el control de flujo al modelo de lenguaje mismo, lo que introduce dos riesgos críticos en un sistema de seguridad:
+
+- **No determinismo en el flujo:** el LLM puede decidir omitir nodos o repetirlos sin límite.
+- **Ausencia de estado tipado:** sin un `AgentState` centralizado, cada nodo debe reconstruir el contexto desde cero, aumentando el consumo de tokens y la probabilidad de alucinaciones.
+
+**LangGraph `StateGraph`** resuelve ambos problemas mediante un grafo dirigido explícito donde:
+
+| Mecanismo | Función en el sistema |
+|:---|:---|
+| **Aristas deterministas** (`add_edge`) | Garantizan que `Orquestador → Parser → Intel → Compliance → Critic` siempre se ejecuten en ese orden y exactamente una vez por ciclo. |
+| **Arista condicional** (`add_conditional_edges`) | `router_critic` evalúa programáticamente `critic_verdict` y `critic_retry_count` para decidir entre re-ejecutar `Compliance` o avanzar a `FinalReport`, sin delegar esa decisión al LLM. |
+| **Circuit Breaker** (`retries >= 1`) | Garantiza convergencia: si el Crítico rechaza en el primer ciclo, `Compliance` reintenta una sola vez; en el segundo ciclo el flujo avanza incondicionalmente, eliminando el riesgo de bucle infinito. |
+
+Esta separación entre **lógica de control** (Python puro en `router_critic`) y **lógica de razonamiento** (LLM en los nodos) es la justificación central para adoptar LangGraph sobre alternativas de ruteo libre.
+
+---
+
+### 2. RAG de dos fases: Búsqueda Híbrida + Re-ranking con Cross-Encoder
+
+El módulo [`src/rag/retriever.py`](src/rag/retriever.py) implementa un pipeline RAG en dos fases bien diferenciadas, motivadas por la limitación inherente de los embeddings densos:
+
+#### Fase 1 — Recuperación Híbrida (`hybrid_search`)
+
+Los vectores de embeddings (modelo `nomic-embed-text`) capturan similitud semántica general, pero pueden recuperar documentos *semánticamente próximos* que no son *relevantes en contexto de seguridad* (ej. dos CVEs del mismo servicio pero para versiones muy distintas).
+
+Por ello, la Fase 1 combina dos estrategias complementarias:
+
+1. **Búsqueda filtrada por metadatos exactos** (`where={"service": svc_clean}`): reduce el espacio de candidatos a documentos etiquetados con el mismo servicio detectado (filtrado léxico exacto sobre ChromaDB).
+2. **Búsqueda densa ampliada** (`top_k × 3`): recupera el triple de candidatos via similitud coseno para asegurar cobertura ante servicios sin etiqueta de metadatos.
+
+Ambos conjuntos se unen con deduplicación por `doc_id`.
+
+#### Fase 2 — Re-ranking con Cross-Encoder (`ms-marco-MiniLM-L-6-v2`)
+
+Los embeddings de la Fase 1 evalúan cada documento **de forma independiente**. El Cross-Encoder, en cambio, recibe el par `(consulta, documento)` completo y calcula la relevancia mediante **atención cruzada bidireccional**, siendo capaz de discriminar entre:
+
+- Un CVE relevante para la versión exacta detectada.
+- Un CVE genérico del mismo producto pero para otra versión.
+
+```
+Phase 1 Output: top_k × 3 candidatos  →  pairs = [(query, doc_i), ...]
+Phase 2 Output: cross_encoder.predict(pairs)  →  cross_score por documento
+Final Output:   resultados reordenados por cross_score  →  top_k entregados al agente
+```
+
+Este esquema de dos fases es un estándar de la industria conocido como **Bi-Encoder + Cross-Encoder** (Reranker), adoptado en sistemas como Cohere Rerank y Jina Reranker. En AI-CAPIBARA-HACKER se ejecuta 100% localmente sin API externa.
+
+---
+
+### 3. Persistencia con `MemorySaver` y el ciclo Human-in-the-Loop
+
+#### Mecanismo del Checkpointer
+
+`MemorySaver` es el **checkpointer nativo** de LangGraph. En cada transición de nodo, LangGraph serializa el `AgentState` completo (servicios parseados, CVEs encontrados, propuestas CIS, veredicto del Crítico, mensajes) y lo guarda en memoria indexado por `thread_id`.
+
+```python
+# src/agents/graph.py — construcción del grafo compilado
+memory = MemorySaver()
+graph = builder.compile(
+    checkpointer=memory,
+    interrupt_before=["FinalReport"]  # Punto de interrupción HITL
+)
+```
+
+#### Flujo del ciclo HITL
+
+Cuando `router_critic` decide avanzar, LangGraph ejecuta los nodos hasta alcanzar `FinalReport`. En lugar de ejecutarlo, **pausa** y devuelve el control a la UI de Streamlit con el estado íntegro del grafo preservado en el checkpoint.
+
+El auditor humano dispone de tres acciones:
+
+| Acción | Mecanismo LangGraph | Resultado |
+|:---|:---|:---|
+| **✅ Aprobar** | `graph.invoke(None, config)` — reanuda desde el checkpoint | `FinalReport` se ejecuta con el estado actual |
+| **✏️ Editar** | `graph.update_state(config, {"critic_feedback": ..., "critic_verdict": "approved_with_edits"})` seguido de `graph.invoke(None, config)` | El estado es mutado *in-place* antes de reanudar |
+| **❌ Rechazar** | El flujo se abandona; el checkpoint queda disponible para auditoría | No se genera reporte |
+
+Esta arquitectura garantiza que **ningún reporte de seguridad se emita sin aprobación explícita de un operador humano**, cumpliendo con el principio de *Human-in-the-Loop* exigido por los marcos de gobernanza de IA.
 
 ---
 
@@ -224,11 +360,22 @@ Si prefieres realizar el proceso paso a paso:
    # En Linux / macOS:
    source venv/bin/activate
 
-   # Copiar archivo de entorno y configurar dependencias
+   # Copiar archivo de entorno y ajustar valores
    cp .env.example .env
+   # Edita .env si necesitas cambiar OLLAMA_MODEL, CHROMA_PERSIST_DIR o MAX_LLM_INTERPRETS
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
+
+   > **Variables de entorno clave (`.env`):**
+   > | Variable | Valor por defecto | Descripción |
+   > |:---|:---|:---|
+   > | `OLLAMA_MODEL` | `qwen2.5:14b` | Modelo LLM local para razonamiento y QA |
+   > | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Modelo de embeddings para ChromaDB |
+   > | `CHROMA_PERSIST_DIR` | `chroma_data` | Directorio de persistencia de ChromaDB |
+   > | `MAX_LLM_INTERPRETS` | `10` | Máx. CVEs interpretados por el LLM por ejecución |
+   > | `MAX_CONTEXT_TOKENS` | `8192` | Ventana de contexto del LLM (tokens) |
+   > | `ENABLE_CRITIC_VALIDATION` | `true` | Activa el nodo Critic de QA antes del reporte |
 
 3. **Cargar la Base de Conocimiento Vectorial (RAG):**
    Inicializa ChromaDB con las bases de datos de CVEs, guías CIS Benchmarks y políticas:
