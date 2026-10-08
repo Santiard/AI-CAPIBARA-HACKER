@@ -43,6 +43,23 @@ class SecurityRetriever:
             vectorstore_manager: Instancia opcional de VectorStoreManager.
         """
         self.vsm = vectorstore_manager or get_vectorstore_manager()
+        self._cross_encoder = None
+
+    def _get_cross_encoder(self):
+        """Inicializa de forma diferida (lazy) el modelo CrossEncoder para no penalizar el tiempo de arranque."""
+        if self._cross_encoder is None:
+            try:
+                from sentence_transformers import CrossEncoder
+                logger.info("Cargando modelo Cross-Encoder para Re-ranking (ms-marco-MiniLM-L-6-v2)...")
+                # max_length limita la cantidad de tokens para no saturar memoria RAM/VRAM local
+                self._cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2', max_length=512)
+            except ImportError:
+                logger.warning("La librería sentence_transformers no está instalada. El re-ranking estará deshabilitado.")
+                self._cross_encoder = "UNAVAILABLE"
+            except Exception as e:
+                logger.error(f"Error al inicializar CrossEncoder: {e}")
+                self._cross_encoder = "UNAVAILABLE"
+        return self._cross_encoder
 
     def hybrid_search(
         self,
@@ -80,13 +97,16 @@ class SecurityRetriever:
 
         results: List[Dict[str, Any]] = []
         seen_ids = set()
+        
+        # Fase 1: Recuperación Densa Ampliada (top_k * 3)
+        fetch_k = top_k * 3
 
         # Paso 1: Búsqueda semántica filtrada por metadatos (si se definió filtro)
         if where_filter:
             try:
                 filtered_query_results = collection.query(
                     query_texts=[query_text],
-                    n_results=min(top_k, collection.count()),
+                    n_results=min(fetch_k, collection.count()),
                     where=where_filter,
                     include=["documents", "metadatas", "distances"]
                 )
@@ -94,13 +114,13 @@ class SecurityRetriever:
             except Exception as e:
                 logger.warning("Búsqueda con filtro falló en colección '%s': %s", collection_name, e)
 
-        # Paso 2: Búsqueda semántica amplia para completar top_k o tolerancia a variaciones
-        remaining = top_k - len(results)
+        # Paso 2: Búsqueda semántica amplia para completar candidatos
+        remaining = fetch_k - len(results)
         if remaining > 0:
             try:
                 broad_query_results = collection.query(
                     query_texts=[query_text],
-                    n_results=min(top_k * 2, collection.count()),
+                    n_results=min(fetch_k, collection.count()),
                     include=["documents", "metadatas", "distances"]
                 )
                 broad_formatted = self._format_chroma_results(broad_query_results, collection_name, seen_ids)
@@ -108,13 +128,36 @@ class SecurityRetriever:
             except Exception as e:
                 logger.error("Búsqueda semántica amplia falló en colección '%s': %s", collection_name, e)
 
-        # Ordenar de forma descendente por score de similitud
-        results.sort(key=lambda x: x.get("similarity_score", 0.0), reverse=True)
-
-        # Aplicar umbral de score mínimo si se solicitó
+        # Aplicar umbral de score mínimo si se solicitó (pre-filtro para no re-rankear basura)
         if min_score is not None:
             results = [r for r in results if r.get("similarity_score", 0.0) >= min_score]
 
+        # Fase 2: Re-ranking con Cross-Encoder
+        cross_encoder = self._get_cross_encoder()
+        if cross_encoder and cross_encoder != "UNAVAILABLE" and len(results) > 0:
+            try:
+                # Preparar pares de textos: [ (consulta, documento_1), (consulta, documento_2), ... ]
+                pairs = [[query_text, r.get("content", "")] for r in results]
+                
+                # Predecir relevancia real usando atención cruzada
+                scores = cross_encoder.predict(pairs)
+                
+                # Actualizar el diccionario de resultados con el nuevo score
+                for i, r in enumerate(results):
+                    r["cross_score"] = float(scores[i])
+                    
+                # Ordenar descendentemente usando el cross_score
+                results.sort(key=lambda x: x["cross_score"], reverse=True)
+                logger.info("Re-ranking aplicado a %d candidatos en %s.", len(results), collection_name)
+            except Exception as e:
+                logger.error("Fallo durante el Re-ranking (%s). Usando fallback de similitud vectorial (Coseno).", e)
+                # Fallback: ordenar por el score coseno original
+                results.sort(key=lambda x: x.get("similarity_score", 0.0), reverse=True)
+        else:
+            # Fallback natural si no hay modelo disponible
+            results.sort(key=lambda x: x.get("similarity_score", 0.0), reverse=True)
+
+        # Retornar únicamente los top_k finales
         return results[:top_k]
 
     def _format_chroma_results(
