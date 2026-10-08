@@ -314,12 +314,22 @@ def node_final_report(state: AgentState):
     
     mode_str = "Diagnóstico Activo del PC Anfitrión" if state.get("audit_mode") == "active" else "Análisis Pasivo de Escaneo Nmap"
     
+    verdict_raw = state.get("critic_verdict", "approve")
+    if verdict_raw == "approved_with_edits":
+        verdict_str = "APROBADO CON MODIFICACIONES HUMANAS (HITL)"
+    elif verdict_raw == "approve":
+        verdict_str = "APROBADO DIRECTAMENTE"
+    elif verdict_raw == "rejected_by_human":
+        verdict_str = "RECHAZADO POR AUDITOR HUMANO"
+    else:
+        verdict_str = str(verdict_raw).upper()
+
     exec_summary = (
         f"Auditoría defensiva completada mediante {mode_str}. "
         f"Se identificaron {len(parsed.get('services', []))} servicios en escucha. "
         f"Se correlacionaron {len(state.get('cve_findings', []))} vectores de riesgo CVE "
         f"y se estructuraron {len(state.get('hardening_proposals', []))} directivas de endurecimiento CIS. "
-        f"Dictamen del Agente Crítico: {state.get('critic_verdict', 'Aprobado')}."
+        f"Validación y Dictamen (HITL): {verdict_str}."
     )
     
     report_data = AuditReportData(
@@ -331,7 +341,7 @@ def node_final_report(state: AgentState):
         services_inventory=parsed.get("services", []),
         vulnerabilities=state.get("cve_findings", []),
         remediations=state.get("hardening_proposals", []),
-        critic_verdict=f"{state.get('critic_verdict', 'approve').upper()}: {state.get('critic_feedback', 'Revisión técnica conforme.')}"
+        critic_verdict=f"{verdict_str}: {state.get('critic_feedback', 'Revisión técnica conforme.')}"
     )
     
     # Generar Markdown

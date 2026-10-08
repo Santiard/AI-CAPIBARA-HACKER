@@ -29,6 +29,10 @@ def initialize_state():
         st.session_state.execution_finished = False
     if "human_review_pending" not in st.session_state:
         st.session_state.human_review_pending = False
+    if "audit_cancelled" not in st.session_state:
+        st.session_state.audit_cancelled = False
+    if "human_decision" not in st.session_state:
+        st.session_state.human_decision = None
     if "thread_config" not in st.session_state:
         st.session_state.thread_config = {"configurable": {"thread_id": "session_capibara_1"}}
 
@@ -197,6 +201,8 @@ def main():
         st.session_state.logs = [f"Iniciando flujo multiagente en Modo {mode_str.upper()}..."]
         st.session_state.execution_finished = False
         st.session_state.human_review_pending = False
+        st.session_state.audit_cancelled = False
+        st.session_state.human_decision = None
         
         # Iniciar thread único para LangGraph
         import uuid
@@ -275,31 +281,123 @@ def main():
         state = st.session_state.graph_state
             
         if st.session_state.human_review_pending:
-            st.warning("⚠️ **Revisión del Agente Crítico & Human-in-the-Loop**")
-            st.markdown(f"**Veredicto del Crítico (Qwen 2.5 14B):** `{state.get('critic_verdict', 'N/A').upper()}`")
-            st.info(f"**Justificación de QA:** {state.get('critic_feedback', 'Sin comentarios.')}")
+            st.markdown("---")
+            st.warning("⚠️ **Punto de Control: Revisión Técnica & Human-in-the-Loop (HITL)**")
             
-            if st.button("✅ Aprobar Dictamen y Emitir Reporte Final", type="primary"):
-                with st.spinner("Generando reporte técnico y exportando PDF..."):
-                    for event in agent_graph.stream(None, st.session_state.thread_config):
-                        for node_name, _ in event.items():
-                            st.session_state.current_node = node_name
-                            st.session_state.logs.append(f"Agente [{node_name}] completó su tarea.")
-                            with logs_placeholder.container():
-                                render_live_logs(st.session_state.logs)
-                    
+            verdict_raw = state.get('critic_verdict', 'N/A').upper()
+            if "APPROVE" in verdict_raw:
+                st.markdown(f"**Dictamen del Agente Crítico (Qwen 2.5 14B):** 🟢 `{verdict_raw}`")
+            else:
+                st.markdown(f"**Dictamen del Agente Crítico (Qwen 2.5 14B):** 🔴 `{verdict_raw}`")
+                
+            st.caption(
+                "Como auditor líder humano, tienes la autoridad para aprobar el informe tal cual, modificar las observaciones "
+                "técnicas antes de consolidar el reporte final, o cancelar la auditoría."
+            )
+            
+            # Campo interactivo para que el usuario pueda EDITAR la justificación / observaciones del crítico
+            edited_feedback = st.text_area(
+                "📝 Observaciones y Justificación de QA (Editable por el Auditor):",
+                value=state.get("critic_feedback", "Sin observaciones registradas."),
+                height=130,
+                help="Puedes modificar estas observaciones antes de incorporarlas en el reporte final."
+            )
+            
+            hitl_col1, hitl_col2, hitl_col3 = st.columns([1, 1, 1])
+            
+            with hitl_col1:
+                if st.button("✅ Aprobar sin cambios", type="primary", use_container_width=True):
+                    with st.spinner("Reanudando ejecución: Generando reporte técnico y PDF oficial..."):
+                        # Sincronizamos en LangGraph que se aprobó directamente
+                        agent_graph.update_state(
+                            st.session_state.thread_config,
+                            {
+                                "critic_verdict": "approve",
+                                "human_approval_granted": True
+                            }
+                        )
+                        for event in agent_graph.stream(None, st.session_state.thread_config):
+                            for node_name, _ in event.items():
+                                st.session_state.current_node = node_name
+                                st.session_state.logs.append(f"Agente [{node_name}] completó su tarea.")
+                                with logs_placeholder.container():
+                                    render_live_logs(st.session_state.logs)
+                        
+                        st.session_state.human_review_pending = False
+                        st.session_state.execution_finished = True
+                        st.session_state.human_decision = "approved"
+                        st.session_state.graph_state = agent_graph.get_state(st.session_state.thread_config).values
+                        st.session_state.logs.append("✅ Flujo reanudado y aprobado sin modificaciones por el operador humano.")
+                        st.rerun()
+                        
+            with hitl_col2:
+                if st.button("✏️ Guardar Cambios y Reanudar", use_container_width=True):
+                    with st.spinner("Actualizando estado en LangGraph y generando reporte final con tus cambios..."):
+                        # Sincronización explícita del estado en LangGraph con graph.update_state()
+                        agent_graph.update_state(
+                            st.session_state.thread_config,
+                            {
+                                "critic_feedback": edited_feedback,
+                                "critic_verdict": "approved_with_edits",
+                                "human_approval_granted": True
+                            }
+                        )
+                        st.session_state.logs.append("✏️ Estado de LangGraph actualizado por el operador humano con feedback personalizado.")
+                        
+                        for event in agent_graph.stream(None, st.session_state.thread_config):
+                            for node_name, _ in event.items():
+                                st.session_state.current_node = node_name
+                                st.session_state.logs.append(f"Agente [{node_name}] completó su tarea.")
+                                with logs_placeholder.container():
+                                    render_live_logs(st.session_state.logs)
+                        
+                        st.session_state.human_review_pending = False
+                        st.session_state.execution_finished = True
+                        st.session_state.human_decision = "approved_with_edits"
+                        st.session_state.graph_state = agent_graph.get_state(st.session_state.thread_config).values
+                        st.session_state.logs.append("✅ Reporte final emitido exitosamente con los cambios del operador.")
+                        st.rerun()
+
+            with hitl_col3:
+                if st.button("❌ Rechazar / Abortar", use_container_width=True):
+                    # Actualizar estado en LangGraph marcando el rechazo humano explícito
+                    agent_graph.update_state(
+                        st.session_state.thread_config,
+                        {
+                            "critic_verdict": "rejected_by_human",
+                            "critic_feedback": f"RECHAZADO POR AUDITOR HUMANO: {edited_feedback}",
+                            "human_approval_granted": False
+                        }
+                    )
                     st.session_state.human_review_pending = False
-                    st.session_state.execution_finished = True
+                    st.session_state.execution_finished = False
+                    st.session_state.audit_cancelled = True
+                    st.session_state.human_decision = "rejected"
                     st.session_state.graph_state = agent_graph.get_state(st.session_state.thread_config).values
+                    st.session_state.logs.append("❌ Auditoría cancelada por el operador humano. Flujo abortado.")
                     st.rerun()
 
-
+    # --- Notificación si fue cancelada por el humano ---
+    if st.session_state.get("audit_cancelled", False):
+        st.error(
+            "🛑 **Auditoría Cancelada por el Operador Humano (HITL)**\n\n"
+            "El flujo multiagente fue abortado en el punto de control de revisión humana. "
+            "No se generó el reporte técnico final ni el informe oficial en PDF.\n\n"
+            "💡 *Puedes reconfigurar los parámetros en el panel lateral e iniciar una nueva auditoría cuando lo requieras.*"
+        )
 
     # --- Renderizado Final del Reporte ---
     if st.session_state.execution_finished and st.session_state.graph_state:
         state = st.session_state.graph_state
         st.divider()
         st.header("📄 Informe Técnico de Auditoría Final")
+        
+        # Insignia del Human Decision
+        if st.session_state.get("human_decision") == "approved_with_edits":
+            st.info("📝 **Informe Aprobado con Modificaciones del Auditor Humano** (Sincronizado vía `agent_graph.update_state`)")
+        elif st.session_state.get("human_decision") == "approved":
+            st.success("✅ **Informe Aprobado Directamente por el Auditor Humano**")
+
         
         col_report, col_charts = st.columns([2, 1])
         
